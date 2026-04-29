@@ -13,6 +13,7 @@ import { Coupons } from './pages/Coupons';
 import { Payments } from './pages/Payments';
 import { Reports } from './pages/Reports';
 import { Users } from './pages/Users';
+import { SystemPermissions } from './pages/SystemPermissions';
 import { Settings } from './pages/Settings';
 import { Notifications } from './pages/Notifications';
 
@@ -38,6 +39,7 @@ export const router = createBrowserRouter([
       { path: 'payments', Component: Payments },
       { path: 'reports', Component: Reports },
       { path: 'users', Component: Users },
+      { path: 'permissions', Component: SystemPermissions },
       { path: 'settings', Component: Settings },
       { path: 'notifications', Component: Notifications },
     ],

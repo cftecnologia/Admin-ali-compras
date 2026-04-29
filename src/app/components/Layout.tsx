@@ -3,7 +3,7 @@ import { Outlet, useNavigate, useLocation } from 'react-router';
 import {
   LayoutDashboard, ShoppingCart, Package, Grid3X3, Tag, Image, Users, Truck,
   Ticket, CreditCard, BarChart3, UserCog, Settings, Bell, Menu, X, LogOut,
-  ChevronRight, Store
+  ChevronRight, Store, Key
 } from 'lucide-react';
 import { notifications } from '../data/mockData';
 import api from '../services/api';
@@ -27,6 +27,11 @@ const navItems = [
   { label: 'Usuários', icon: UserCog, path: '/users' },
   { label: 'Configurações', icon: Settings, path: '/settings' },
 ];
+
+const superAdminItems = [
+  { label: 'Permissões', icon: Key, path: '/permissions' },
+];
+
 
 export function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -112,6 +117,32 @@ export function Layout() {
               </button>
             );
           })}
+
+          {user?.perfil === 'superadmin' && (
+            <>
+              <div className="pt-4 pb-2 px-3 text-[10px] font-bold text-white/30 uppercase tracking-wider">Master</div>
+              {superAdminItems.map((item) => {
+                const active = isActive(item.path);
+                return (
+                  <button
+                    key={item.path}
+                    onClick={() => { navigate(item.path); setSidebarOpen(false); }}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-150 group`}
+                    style={{
+                      backgroundColor: active ? 'rgba(255,255,255,0.15)' : 'transparent',
+                      color: active ? 'white' : 'rgba(255,255,255,0.65)',
+                    }}
+                    onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(255,255,255,0.08)'; }}
+                    onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
+                  >
+                    <item.icon className="w-4 h-4 flex-shrink-0" />
+                    <span>{item.label}</span>
+                    {active && <ChevronRight className="w-3.5 h-3.5 ml-auto opacity-70" />}
+                  </button>
+                );
+              })}
+            </>
+          )}
         </nav>
 
         {/* User */}
