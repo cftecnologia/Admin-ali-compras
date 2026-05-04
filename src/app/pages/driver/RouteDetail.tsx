@@ -44,12 +44,45 @@ export function RouteDetail() {
   const fetchRouteDetails = async () => {
     try {
       setLoading(true);
-      const response = await api.get(`/delivery-routes/${id}`);
-      // Backend returns: { route: {...}, stops: [...] }
-      setRoute({
-        ...response.data.route,
-        stops: response.data.stops
-      });
+      
+      if (id?.startsWith('delivery-')) {
+        const realId = id.replace('delivery-', '');
+        const response = await api.get(`/entregas/${realId}`);
+        const d = response.data.data || response.data;
+        
+        // Map individual delivery to route format
+        setRoute({
+          id: `delivery-${d.id}`,
+          real_id: d.id,
+          routeName: `Pedido #${d.numero_pedido || d.id.slice(0, 8)}`,
+          status: d.status === 'atribuida' ? 'planned' : (d.status === 'saiu_para_entrega' ? 'in_progress' : (d.status === 'entregue' ? 'completed' : 'canceled')),
+          createdAt: d.criado_em,
+          stopCount: 1,
+          is_route: false,
+          stops: [{
+            id: d.id,
+            orderId: d.numero_pedido || d.id,
+            customerName: d.cliente_nome || 'Cliente',
+            customerPhone: d.cliente_telefone || '',
+            address: `${d.endereco_logradouro}, ${d.endereco_numero}`,
+            neighborhood: d.endereco_bairro || '',
+            latitude: parseFloat(d.endereco_latitude) || 0,
+            longitude: parseFloat(d.endereco_longitude) || 0,
+            status: d.status === 'entregue' ? 'delivered' : (d.status === 'falhou' ? 'failed' : 'pending'),
+            sequence: 1,
+            problemReason: d.observacoes
+          }]
+        });
+      } else {
+        const response = await api.get(`/delivery-routes/${id}`);
+        // Backend returns: { route: {...}, stops: [...] }
+        setRoute({
+          ...response.data.route,
+          stops: response.data.stops,
+          stopCount: response.data.stops?.length || 0,
+          is_route: true
+        });
+      }
     } catch (err) {
       console.error('Erro ao buscar detalhes da rota:', err);
     } finally {
@@ -60,7 +93,12 @@ export function RouteDetail() {
   const handleStartRoute = async () => {
     try {
       setUpdating('start');
-      const response = await api.patch(`/delivery-routes/${id}/start`);
+      if (id?.startsWith('delivery-')) {
+        const realId = id.replace('delivery-', '');
+        await api.patch(`/entregas/${realId}/sair-para-entrega`);
+      } else {
+        await api.patch(`/delivery-routes/${id}/start`);
+      }
       setRoute(prev => prev ? { ...prev, status: 'in_progress' } : null);
     } catch (err) {
       console.error('Erro ao iniciar rota:', err);
@@ -72,10 +110,17 @@ export function RouteDetail() {
   const handleUpdateStatus = async (stopId: string, status: 'delivered' | 'failed', reason?: string) => {
     try {
       setUpdating(stopId);
-      const response = await api.patch(`/delivery-route-stops/${stopId}/check`, {
-        status,
-        reason
-      });
+      
+      if (id?.startsWith('delivery-')) {
+        const realId = id.replace('delivery-', '');
+        const endpoint = status === 'delivered' ? 'entregar' : 'falhar';
+        await api.patch(`/entregas/${realId}/${endpoint}`, { observacoes: reason });
+      } else {
+        await api.patch(`/delivery-route-stops/${stopId}/check`, {
+          status,
+          reason
+        });
+      }
       
       // Update local state
       setRoute(prev => {

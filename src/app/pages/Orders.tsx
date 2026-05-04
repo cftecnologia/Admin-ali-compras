@@ -105,7 +105,7 @@ const printComanda = (order: any, orderItems: any[] = orderItemsMock) => {
   ${(order.type === 'Entrega' || order.tipo_pedido === 'entrega') ? `<p><span class="bold">Endereço:</span> ${order.endereco_cliente?.logradouro || order.address || 'Não informado'}</p><p><span class="bold">Bairro:</span> ${order.endereco_cliente?.bairro || extractBairro(order.address || '')}</p>` : ''}
   <div class="divider"></div>
   <p class="bold" style="margin-bottom:6px">ITENS DO PEDIDO:</p>
-  ${orderItems.map(i => `
+  ${(Array.isArray(orderItems) ? orderItems : []).map(i => `
     <div class="row">
       <span>${i.quantity || i.qty}x ${i.produto?.nome || i.name}</span>
       <span>R$ ${((i.price_unit || i.price) * (i.quantity || i.qty)).toFixed(2).replace('.', ',')}</span>
@@ -207,6 +207,10 @@ export function Orders() {
   const [selectedItems, setSelectedItems] = useState<any[]>([]);
   const [viewMode, setViewMode] = useState<'lista' | 'bairros'>('lista');
   const [expandedBairros, setExpandedBairros] = useState<Record<string, boolean>>({});
+  const [couriers, setCouriers] = useState<any[]>([]);
+  const [areas, setAreas] = useState<any[]>([]);
+  const [currentDelivery, setCurrentDelivery] = useState<any | null>(null);
+  const [assigningCourier, setAssigningCourier] = useState(false);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
   const PER_PAGE = 20;
@@ -215,7 +219,25 @@ export function Orders() {
     setOrders([]);
     setPage(1);
     fetchOrders(1, true);
+    fetchAuxiliaryData();
   }, [statusFilter, typeFilter]);
+
+  const fetchAuxiliaryData = async () => {
+    try {
+      const [entRes, areaRes] = await Promise.all([
+        api.get('/entregadores'),
+        api.get('/areas_entrega')
+      ]);
+      const eData = entRes.data.data;
+      const allCouriers = Array.isArray(eData) ? eData : eData?.data || [];
+      setCouriers(allCouriers.filter((c: any) => c.status === 'ativo' || c.status === 'disponivel'));
+      
+      const aData = areaRes.data.data;
+      setAreas(Array.isArray(aData) ? aData : aData?.data || []);
+    } catch (error) {
+      console.error('Error fetching auxiliary data:', error);
+    }
+  };
 
   // Debounced search
   useEffect(() => {
@@ -262,23 +284,84 @@ export function Orders() {
   const fetchOrderItems = async (orderId: string) => {
     try {
       const response = await api.get('/itens_pedido', { params: { pedido_id: orderId } });
-      setSelectedItems(response.data.data || []);
+      const rawItems = response.data.data ?? response.data;
+      setSelectedItems(Array.isArray(rawItems) ? rawItems : []);
     } catch (error) {
       console.error('Error fetching order items:', error);
       // fallback
       try {
         const resp2 = await api.get(`/pedidos/${orderId}/itens`);
-        setSelectedItems(resp2.data.data || []);
+        const rawItems2 = resp2.data.data ?? resp2.data;
+        setSelectedItems(Array.isArray(rawItems2) ? rawItems2 : []);
       } catch (err2) {
-         setSelectedItems(orderItemsMock);
+         setSelectedItems(Array.isArray(orderItemsMock) ? orderItemsMock : []);
       }
+    }
+  };
+
+  const fetchOrderDelivery = async (orderId: string) => {
+    try {
+      const response = await api.get('/entregas', { params: { pedido_id: orderId } });
+      const rawData = response.data.data;
+      const data = Array.isArray(rawData) ? rawData : rawData?.data || [];
+      // Se houver entrega, pega a primeira (geralmente só tem uma)
+      setCurrentDelivery(data.length > 0 ? data[0] : null);
+    } catch (error) {
+      console.error('Error fetching order delivery:', error);
+      setCurrentDelivery(null);
     }
   };
 
   const handleSelectOrder = (order: any) => {
     setSelected(order);
     setSelectedItems([]);
+    setCurrentDelivery(null);
     fetchOrderItems(order.id);
+    if ((order.tipo_pedido || order.type || '').toLowerCase() === 'entrega') {
+      fetchOrderDelivery(order.id);
+    }
+  };
+
+  const handleAssignCourier = async (entregadorId: string) => {
+    if (!selected) return;
+    
+    try {
+      setAssigningCourier(true);
+      if (currentDelivery) {
+        // Já existe uma entrega, vamos atribuir/mudar o entregador
+        const response = await api.patch(`/entregas/${currentDelivery.id}/atribuir-entregador`, {
+          entregador_id: entregadorId
+        });
+        setCurrentDelivery(response.data.data || response.data);
+      } else {
+        // Não existe entrega, vamos criar uma
+        // Precisamos de uma área de entrega. Vamos tentar encontrar uma pelo bairro ou usar a primeira disponível.
+        const bairro = selected.endereco_cliente?.bairro || extractBairro(selected.address || '');
+        let area = areas.find(a => a.nome.toLowerCase() === bairro.toLowerCase());
+        
+        if (!area && areas.length > 0) {
+          area = areas[0]; // Fallback para a primeira área
+        }
+        
+        if (!area) {
+          alert('Nenhuma área de entrega configurada para esta loja. Crie uma área de entrega primeiro.');
+          return;
+        }
+
+        const response = await api.post('/entregas', {
+          pedido_id: selected.id,
+          entregador_id: entregadorId,
+          area_entrega_id: area.id,
+          status: 'atribuida'
+        });
+        setCurrentDelivery(response.data.data || response.data);
+      }
+    } catch (error) {
+      console.error('Error assigning courier:', error);
+      alert('Erro ao atribuir entregador. Verifique se o entregador pertence à mesma loja.');
+    } finally {
+      setAssigningCourier(false);
+    }
   };
 
   const advanceStatus = async (id: string, currentStatus: string) => {
@@ -297,7 +380,16 @@ export function Orders() {
     if (idx >= 0 && idx < backendStatusFlow.length - 1) {
       const nextStatus = backendStatusFlow[idx + 1];
       try {
-        await api.patch(`/pedidos/${id}/status`, { status: nextStatus });
+        // Se for um pedido de entrega e já tiver vínculo, e o próximo status for relacionado a entrega,
+        // usamos o endpoint de entrega para manter sincronizado.
+        if (currentDelivery && (nextStatus === 'saiu_para_entrega' || nextStatus === 'entregue')) {
+          const endpoint = nextStatus === 'saiu_para_entrega' ? 'sair-para-entrega' : 'entregar';
+          await api.patch(`/entregas/${currentDelivery.id}/${endpoint}`);
+          // Recarregar entrega para garantir sincronia
+          fetchOrderDelivery(id);
+        } else {
+          await api.patch(`/pedidos/${id}/status`, { status: nextStatus });
+        }
         
         // Update local state
         setOrders(prev => prev.map(o => o.id === id ? { ...o, status: nextStatus } : o));
@@ -306,6 +398,7 @@ export function Orders() {
         }
       } catch (error) {
         console.error('Error updating status', error);
+        alert('Erro ao atualizar status. Verifique se as condições para este status foram atendidas (ex: entregador atribuído).');
       }
     }
   };
@@ -450,7 +543,7 @@ export function Orders() {
           <div className="flex-1 overflow-y-auto divide-y divide-gray-100">
             {filtered.map(order => {
               const statusDisplay = getStatusLabel(order.status);
-              const sc = statusColor[order.status] ?? statusColor['Recebido'];
+              const sc = statusColor[order.status] || statusColor['Recebido'] || { bg: '#fffbeb', text: '#d97706' };
               const isSelected = selected?.id === order.id;
               const isEntrega = (order.tipo_pedido || order.type || '').toLowerCase() === 'entrega';
               
@@ -597,7 +690,7 @@ export function Orders() {
                     <div className="bg-white border-t divide-y" style={{ borderColor: col.border }}>
                       {group.orders.map((order, oIdx) => {
                         const statusDisplay = getStatusLabel(order.status);
-                        const sc = statusColor[order.status] ?? statusColor['Recebido'];
+                        const sc = statusColor[order.status] || statusColor['Recebido'] || { bg: '#eee', text: '#666' };
                         return (
                           <div
                             key={order.id}
@@ -672,8 +765,8 @@ export function Orders() {
                 <span
                   className="px-2 py-0.5 rounded-full text-xs font-medium"
                   style={{
-                    backgroundColor: (statusColor[selected.status] ?? statusColor['Recebido']).bg,
-                    color: (statusColor[selected.status] ?? statusColor['Recebido']).text
+                    backgroundColor: (statusColor[selected.status] || statusColor['Recebido'] || { bg: '#eee', text: '#666' }).bg,
+                    color: (statusColor[selected.status] || statusColor['Recebido'] || { bg: '#eee', text: '#666' }).text
                   }}
                 >
                   {getStatusLabel(selected.status)}
@@ -761,7 +854,7 @@ export function Orders() {
                 <Package className="w-4 h-4" style={{ color: PRIMARY }} /> Itens do Pedido
               </h4>
               <div className="space-y-2.5">
-                {selectedItems.map((item: any, idx: number) => (
+                {Array.isArray(selectedItems) && selectedItems.map((item: any, idx: number) => (
                   <div key={idx} className="flex items-center justify-between">
                     <div>
                       <div className="text-sm text-gray-700">{item.quantity || item.qty}x {item.produto?.nome || item.name}</div>
@@ -803,6 +896,69 @@ export function Orders() {
               <div className="text-sm text-gray-600">{selected.pagamento?.metodo || selected.payment || 'Não informado'}</div>
               <div className="mt-1 text-xs text-green-600 font-medium">✓ {selected.pagamento?.status || 'Confirmado'}</div>
             </div>
+
+            {/* Delivery Person Assignment */}
+            {(selected.tipo_pedido || selected.type || '').toLowerCase() === 'entrega' && (
+              <div className="bg-white border border-gray-200 rounded-xl p-4">
+                <h4 className="text-gray-700 font-semibold mb-3 flex items-center gap-2">
+                  <TruckIcon className="w-4 h-4" style={{ color: PRIMARY }} /> Entregador
+                </h4>
+                
+                {currentDelivery?.entregador_id ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500">
+                          <User className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="text-sm font-medium text-gray-800">
+                            {couriers.find(c => c.id === currentDelivery.entregador_id)?.nome || 'Entregador atribuído'}
+                          </div>
+                          <div className="text-[10px] text-gray-400 capitalize">
+                            Status: {currentDelivery.status.replace('_', ' ')}
+                          </div>
+                        </div>
+                      </div>
+                      <button 
+                        onClick={() => setCurrentDelivery({ ...currentDelivery, entregador_id: null })}
+                        className="text-xs text-blue-600 hover:underline"
+                      >
+                        Alterar
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <p className="text-xs text-gray-500 mb-2">Selecione um entregador para este pedido:</p>
+                    <div className="grid grid-cols-1 gap-2 max-h-40 overflow-y-auto pr-1">
+                      {couriers.length > 0 ? (
+                        couriers.map(courier => (
+                          <button
+                            key={courier.id}
+                            disabled={assigningCourier}
+                            onClick={() => handleAssignCourier(courier.id)}
+                            className="flex items-center justify-between p-2 rounded-lg border border-gray-100 hover:border-blue-200 hover:bg-blue-50 transition-all text-left"
+                          >
+                            <div className="flex items-center gap-2">
+                              <div className="w-6 h-6 rounded-full bg-gray-50 flex items-center justify-center text-gray-400">
+                                <User className="w-3 h-3" />
+                              </div>
+                              <span className="text-xs font-medium text-gray-700">{courier.nome}</span>
+                            </div>
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${courier.status === 'disponivel' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                              {courier.status || 'Ativo'}
+                            </span>
+                          </button>
+                        ))
+                      ) : (
+                        <p className="text-xs text-amber-600 italic">Nenhum entregador cadastrado.</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Actions */}
             <div className="space-y-2">

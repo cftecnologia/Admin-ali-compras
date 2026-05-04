@@ -149,7 +149,7 @@ function UserForm({ user, onClose, onSuccess }: { user?: any; onClose: () => voi
             <label className="block text-sm text-gray-600 mb-1.5">Função / Perfil</label>
             <div className="grid grid-cols-2 gap-2">
               {roles.map(r => {
-                const rc = roleColors[r] || roleColors['Operador de Pedidos'];
+                const rc = roleColors[r] || roleColors['Operador'];
                 return (
                   <button
                     key={r}
@@ -227,7 +227,7 @@ export function Users() {
           id: u.id,
           name: u.nome,
           email: u.email,
-          role: perfis[u.perfil] || 'Operador de Pedidos',
+          role: perfis[u.perfil] || 'Operador',
           raw_perfil: u.perfil,
           status: u.status === 'ativo' ? 'Ativo' : 'Inativo',
           raw_status: u.status,
@@ -307,7 +307,7 @@ export function Users() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {users.map(user => {
-                const rc = roleColors[user.role] ?? roleColors['Operador de Pedidos'];
+                const rc = roleColors[user.role] || roleColors['Operador'];
                 return (
                   <tr key={user.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-4 py-3">

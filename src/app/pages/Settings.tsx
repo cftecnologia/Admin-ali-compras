@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Store, Clock, Truck, CreditCard, Save, Bell, Link as LinkIcon, CheckCircle, XCircle } from 'lucide-react';
+import { Store, Clock, Truck, CreditCard, Save, Bell, Link as LinkIcon, CheckCircle, XCircle, MapPin, Plus, Trash2, Map } from 'lucide-react';
 import api from '../services/api';
 import LoadingModal from '../components/ui/LoadingModal';
 
 const PRIMARY = '#122a4c';
 
-const sections = ['Dados do Mercado', 'Horário de Funcionamento', 'Entrega', 'Pagamentos', 'Notificações'];
+const sections = ['Dados do Mercado', 'Horário de Funcionamento', 'Entrega', 'Áreas de Entrega', 'Pagamentos', 'Notificações'];
 
 export function Settings() {
   const [activeSection, setActiveSection] = useState('Dados do Mercado');
@@ -16,6 +16,18 @@ export function Settings() {
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [areasEntrega, setAreasEntrega] = useState<any[]>([]);
+  const [loadingAreas, setLoadingAreas] = useState(false);
+  const [showAreaModal, setShowAreaModal] = useState(false);
+  const [newArea, setNewArea] = useState({
+    nome: '',
+    bairro: '',
+    cidade: '',
+    estado: '',
+    taxa_entrega: 0,
+    tempo_estimado_minutos: 30,
+    ativa: true
+  });
 
   const [formData, setFormData] = useState<any>({
     nome: '',
@@ -52,6 +64,19 @@ export function Settings() {
       console.error('Erro ao verificar conexão MP:', error);
     } finally {
       setLoadingMp(false);
+    }
+  }, [lojaId]);
+
+  const loadAreasEntrega = useCallback(async () => {
+    if (!lojaId) return;
+    try {
+      setLoadingAreas(true);
+      const response = await api.get(`/areas_entrega?loja_id=${lojaId}`);
+      setAreasEntrega(response.data.data?.results || []);
+    } catch (error) {
+      console.error('Erro ao carregar áreas de entrega:', error);
+    } finally {
+      setLoadingAreas(false);
     }
   }, [lojaId]);
 
@@ -124,7 +149,8 @@ export function Settings() {
   useEffect(() => {
     loadData();
     checkMpConnection();
-  }, [loadData, checkMpConnection]);
+    loadAreasEntrega();
+  }, [loadData, checkMpConnection, loadAreasEntrega]);
 
   const save = async () => {
     try {
@@ -220,6 +246,67 @@ export function Settings() {
         ? prev.preferencias_notificacao.filter((t: string) => t !== type)
         : [...prev.preferencias_notificacao, type]
     }));
+  };
+
+  const handleCreateArea = async () => {
+    if (!newArea.nome || !newArea.cidade || !newArea.estado) {
+      alert('Por favor, preencha o nome, cidade e estado.');
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      await api.post('/areas_entrega', {
+        ...newArea,
+        loja_id: lojaId,
+        taxa_entrega: Number(newArea.taxa_entrega),
+        tempo_estimado_minutos: Number(newArea.tempo_estimado_minutos)
+      });
+      setShowAreaModal(false);
+      setNewArea({
+        nome: '',
+        bairro: '',
+        cidade: '',
+        estado: '',
+        taxa_entrega: 0,
+        tempo_estimado_minutos: 30,
+        ativa: true
+      });
+      loadAreasEntrega();
+      setShowSuccess(true);
+      setTimeout(() => setShowSuccess(false), 1500);
+    } catch (err) {
+      console.error('Erro ao criar área de entrega:', err);
+      alert('Erro ao criar área de entrega');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDeleteArea = async (id: string) => {
+    if (!confirm('Tem certeza que deseja excluir esta área de entrega?')) return;
+
+    try {
+      setLoadingAreas(true);
+      await api.delete(`/areas_entrega/${id}`);
+      loadAreasEntrega();
+    } catch (err) {
+      console.error('Erro ao excluir área de entrega:', err);
+      alert('Erro ao excluir área de entrega');
+    } finally {
+      setLoadingAreas(false);
+    }
+  };
+
+  const handleToggleAreaStatus = async (area: any) => {
+    try {
+      await api.put(`/areas_entrega/${area.id}`, {
+        ativa: !area.ativa
+      });
+      loadAreasEntrega();
+    } catch (err) {
+      console.error('Erro ao alterar status da área:', err);
+    }
   };
 
   if (loading) {
@@ -407,6 +494,74 @@ export function Settings() {
             </div>
           )}
 
+          {activeSection === 'Áreas de Entrega' && (
+            <div className="bg-white border border-gray-200 rounded-xl p-5">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <MapPin className="w-4 h-4" style={{ color: PRIMARY }} />
+                  <h3 className="font-semibold text-gray-800">Áreas de Entrega</h3>
+                </div>
+                <button
+                  onClick={() => setShowAreaModal(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-white text-xs font-medium transition-all"
+                  style={{ backgroundColor: PRIMARY }}
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Nova Área
+                </button>
+              </div>
+
+              {loadingAreas ? (
+                <div className="flex justify-center py-8">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
+                </div>
+              ) : areasEntrega.length === 0 ? (
+                <div className="text-center py-12 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                  <Map className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+                  <p className="text-gray-500 text-sm">Nenhuma área de entrega cadastrada.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {areasEntrega.map((area) => (
+                    <div key={area.id} className="p-4 border border-gray-200 rounded-xl hover:border-primary/30 transition-colors">
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <h4 className="font-semibold text-gray-800 text-sm">{area.nome}</h4>
+                          <p className="text-xs text-gray-500">{area.bairro ? `${area.bairro}, ` : ''}{area.cidade} - {area.estado}</p>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleToggleAreaStatus(area)}
+                            className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${area.ativa ? 'bg-green-50 text-green-600' : 'bg-gray-50 text-gray-400'}`}
+                            title={area.ativa ? 'Desativar' : 'Ativar'}
+                          >
+                            <CheckCircle className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteArea(area.id)}
+                            className="w-8 h-8 rounded-lg flex items-center justify-center bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-50">
+                        <div className="text-xs">
+                          <span className="text-gray-500">Taxa: </span>
+                          <span className="font-semibold text-gray-700">R$ {Number(area.taxa_entrega).toFixed(2)}</span>
+                        </div>
+                        <div className="text-xs">
+                          <span className="text-gray-500">Tempo: </span>
+                          <span className="font-semibold text-gray-700">{area.tempo_estimado_minutos} min</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {activeSection === 'Pagamentos' && (
             <div className="bg-white border border-gray-200 rounded-xl p-5">
               <div className="flex items-center gap-2 mb-4">
@@ -532,6 +687,109 @@ export function Settings() {
           )}
         </div>
       </div>
+
+      {/* Modal Nova Área */}
+      {showAreaModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="font-bold text-gray-900 flex items-center gap-2">
+                <MapPin className="w-5 h-5 text-primary" />
+                Nova Área de Entrega
+              </h3>
+              <button 
+                onClick={() => setShowAreaModal(false)}
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+              >
+                <XCircle className="w-5 h-5 text-gray-400" />
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-400 uppercase mb-1">Nome da Área (ex: Bairro Centro)</label>
+                <input 
+                  type="text" 
+                  value={newArea.nome}
+                  onChange={(e) => setNewArea({...newArea, nome: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+                  placeholder="Nome identificador"
+                />
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-400 uppercase mb-1">Bairro</label>
+                  <input 
+                    type="text" 
+                    value={newArea.bairro}
+                    onChange={(e) => setNewArea({...newArea, bairro: e.target.value})}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+                    placeholder="Opcional"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-400 uppercase mb-1">Cidade</label>
+                  <input 
+                    type="text" 
+                    value={newArea.cidade}
+                    onChange={(e) => setNewArea({...newArea, cidade: e.target.value})}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-400 uppercase mb-1">Estado (UF)</label>
+                  <input 
+                    type="text" 
+                    maxLength={2}
+                    value={newArea.estado}
+                    onChange={(e) => setNewArea({...newArea, estado: e.target.value.toUpperCase()})}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+                    placeholder="SP"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-400 uppercase mb-1">Taxa (R$)</label>
+                  <input 
+                    type="number" 
+                    value={newArea.taxa_entrega}
+                    onChange={(e) => setNewArea({...newArea, taxa_entrega: Number(e.target.value)})}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-400 uppercase mb-1">Tempo (min)</label>
+                  <input 
+                    type="number" 
+                    value={newArea.tempo_estimado_minutos}
+                    onChange={(e) => setNewArea({...newArea, tempo_estimado_minutos: Number(e.target.value)})}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 bg-gray-50 border-t border-gray-100 flex gap-3">
+              <button
+                onClick={() => setShowAreaModal(false)}
+                className="flex-1 px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium text-gray-600 hover:bg-white transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleCreateArea}
+                className="flex-1 px-4 py-2 rounded-lg text-white text-sm font-semibold transition-all hover:brightness-110 shadow-sm"
+                style={{ backgroundColor: PRIMARY }}
+              >
+                Criar Área
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

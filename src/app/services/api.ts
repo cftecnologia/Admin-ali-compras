@@ -2,7 +2,7 @@ import axios from 'axios';
 
 // Create an Axios instance
 const api = axios.create({
-  baseURL: 'https://mercado-backend-309216499283.southamerica-east1.run.app/api', // Backend local URL
+  baseURL: 'http://localhost:3010/api', // Backend production URL
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',

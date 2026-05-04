@@ -15,6 +15,7 @@ import { Reports } from './pages/Reports';
 import { Users } from './pages/Users';
 import { SystemPermissions } from './pages/SystemPermissions';
 import { Settings } from './pages/Settings';
+import { Entregadores } from './pages/Entregadores';
 import { Notifications } from './pages/Notifications';
 import { DriverLayout } from './components/DriverLayout';
 import { MyDeliveries } from './pages/driver/MyDeliveries';
@@ -52,6 +53,7 @@ export const router = createBrowserRouter([
       { path: 'users', Component: Users },
       { path: 'permissions', Component: SystemPermissions },
       { path: 'settings', Component: Settings },
+      { path: 'entregadores', Component: Entregadores },
       { path: 'notifications', Component: Notifications },
     ],
   },

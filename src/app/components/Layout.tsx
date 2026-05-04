@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Outlet, useNavigate, useLocation, Navigate } from 'react-router';
 import {
-  LayoutDashboard, ShoppingCart, Package,  Grid3X3, Tag, Image, Users, Truck,
+  LayoutDashboard, ShoppingCart, Package,  Grid3X3, Tag, Image, Users, Truck, User,
   Ticket, CreditCard, BarChart3, UserCog, Settings, Bell, Menu, X, LogOut,
   ChevronRight, Store, Key, ClipboardList, Bike
 } from 'lucide-react';
@@ -22,6 +22,7 @@ const navItems = [
   // { label: 'Banners', icon: Image, path: '/banners', slug: 'configuracoes' },
   { label: 'Clientes', icon: Users, path: '/customers', slug: 'clientes' },
   { label: 'Entregas', icon: Truck, path: '/deliveries', slug: 'entregadores' },
+  { label: 'Entregadores', icon: User, path: '/entregadores', slug: 'entregadores' },
   { label: 'Cupons', icon: Ticket, path: '/coupons', slug: 'cupons' },
   { label: 'Pagamentos', icon: CreditCard, path: '/payments', slug: 'financeiro' },
   { label: 'Relatórios', icon: BarChart3, path: '/reports', slug: 'financeiro' },

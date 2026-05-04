@@ -283,18 +283,19 @@ export function Dashboard() {
               <button onClick={() => navigate('/notifications')} className="text-xs hover:underline" style={{ color: PRIMARY }}>Ver todos</button>
             </div>
             <div className="space-y-2">
-              {alerts.length > 0 ? alerts.map((alert: any, i: number) => {
-                 let Icon = AlertTriangle;
-                 if (alert.type === 'stock') Icon = Package;
-                 if (alert.type === 'delivery') Icon = Truck;
-                 
-                 return (
-                  <div key={i} className="flex items-center gap-2.5 p-2.5 rounded-lg" style={{ backgroundColor: alert.bg || '#fffbeb' }}>
-                    <Icon className="w-4 h-4 flex-shrink-0" style={{ color: alert.color || '#d97706' }} />
-                    <span className="text-xs font-medium" style={{ color: alert.color || '#d97706' }}>{alert.text}</span>
-                  </div>
-                 );
-              }) : (
+               {alerts.length > 0 ? alerts.map((alert: any, i: number) => {
+                  if (!alert) return null;
+                  let Icon = AlertTriangle;
+                  if (alert.type === 'stock') Icon = Package;
+                  if (alert.type === 'delivery') Icon = Truck;
+                  
+                  return (
+                   <div key={i} className="flex items-center gap-2.5 p-2.5 rounded-lg" style={{ backgroundColor: alert.bg || '#fffbeb' }}>
+                     <Icon className="w-4 h-4 flex-shrink-0" style={{ color: alert.color || '#d97706' }} />
+                     <span className="text-xs font-medium" style={{ color: alert.color || '#d97706' }}>{alert.text}</span>
+                   </div>
+                  );
+               }) : (
                  <div className="text-sm text-gray-500 text-center">Nenhum alerta.</div>
               )}
             </div>
