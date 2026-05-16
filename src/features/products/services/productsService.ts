@@ -12,6 +12,30 @@ export const productsService = {
     return toList(response.data);
   },
 
+  async getAllStoreProducts() {
+    const firstResponse = await api.get("/produtos_loja", {
+      params: { page: 1, per_page: 100 },
+    });
+    const firstData = firstResponse.data?.data;
+    const firstList = toList(firstResponse.data);
+    const totalPages = firstData?.total_pages || 1;
+
+    if (totalPages <= 1) return firstList;
+
+    const remainingResponses = await Promise.all(
+      Array.from({ length: totalPages - 1 }, (_, index) =>
+        api.get("/produtos_loja", {
+          params: { page: index + 2, per_page: 100 },
+        }),
+      ),
+    );
+
+    return [
+      ...firstList,
+      ...remainingResponses.flatMap((response) => toList(response.data)),
+    ];
+  },
+
   async getActiveCategories() {
     const response = await api.get("/categorias", { params: { ativa: true, per_page: 100 } });
     return toList(response.data);

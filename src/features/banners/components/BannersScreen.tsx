@@ -111,6 +111,32 @@ function getProductCategoryLabel(product: any) {
   return product.categoria_caminho || product.categoria_nome || 'Sem categoria';
 }
 
+function hasActivePromotion(product: any) {
+  const price = Number(product.preco);
+  const promoPrice = Number(product.preco_promocional);
+  const promotionDate = product.promocao_ate ? new Date(product.promocao_ate).getTime() : null;
+  const dateIsValid = !promotionDate || promotionDate >= Date.now();
+
+  return Number.isFinite(price) && Number.isFinite(promoPrice) && promoPrice > 0 && promoPrice < price && dateIsValid;
+}
+
+function getDescendantCategoryIds(categories: any[], categoryId: string) {
+  const ids = new Set<string>([categoryId]);
+  let changed = true;
+
+  while (changed) {
+    changed = false;
+    categories.forEach((category) => {
+      if (category.categoria_pai_id && ids.has(category.categoria_pai_id) && !ids.has(category.id)) {
+        ids.add(category.id);
+        changed = true;
+      }
+    });
+  }
+
+  return ids;
+}
+
 function ProductPickerModal({
   products,
   categories,
@@ -126,6 +152,7 @@ function ProductPickerModal({
 }) {
   const [query, setQuery] = useState('');
   const [categoryId, setCategoryId] = useState('');
+  const [promoOnly, setPromoOnly] = useState(false);
   const [page, setPage] = useState(1);
   const perPage = 30;
 
@@ -137,14 +164,17 @@ function ProductPickerModal({
 
   const filteredProducts = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
+    const selectedCategoryIds = categoryId ? getDescendantCategoryIds(categories, categoryId) : null;
 
     return products.filter((product) => {
-      const categoryMatches = !categoryId || getProductCategoryId(product) === categoryId;
+      const productCategoryId = getProductCategoryId(product);
+      const categoryMatches = !selectedCategoryIds || selectedCategoryIds.has(productCategoryId);
+      const promotionMatches = !promoOnly || hasActivePromotion(product);
       const text = `${product.nome || ''} ${product.marca || ''} ${product.codigo_interno || ''} ${getProductCategoryLabel(product)}`.toLowerCase();
       const searchMatches = !normalizedQuery || text.includes(normalizedQuery);
-      return categoryMatches && searchMatches;
+      return categoryMatches && promotionMatches && searchMatches;
     });
-  }, [categoryId, products, query]);
+  }, [categories, categoryId, products, promoOnly, query]);
 
   const totalPages = Math.max(1, Math.ceil(filteredProducts.length / perPage));
   const currentPage = Math.min(page, totalPages);
@@ -152,7 +182,7 @@ function ProductPickerModal({
 
   useEffect(() => {
     setPage(1);
-  }, [categoryId, query]);
+  }, [categoryId, promoOnly, query]);
 
   const toggle = (productId: string) => {
     onChange(selectedSet.has(productId)
@@ -205,6 +235,14 @@ function ProductPickerModal({
                   </option>
                 ))}
               </select>
+              <label className="flex items-center gap-2 rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 md:col-span-2">
+                <input
+                  type="checkbox"
+                  checked={promoOnly}
+                  onChange={(event) => setPromoOnly(event.target.checked)}
+                />
+                Apenas produtos em promoção
+              </label>
             </div>
 
             <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
@@ -646,7 +684,7 @@ export function BannersScreen() {
       setError(null);
       const [bannerList, productList, categoryList] = await Promise.all([
         bannersService.getBanners(),
-        productsService.getStoreProducts(),
+        productsService.getAllStoreProducts(),
         productsService.getActiveCategories(),
       ]);
       setBanners(bannerList);
