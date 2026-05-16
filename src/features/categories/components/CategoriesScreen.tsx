@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
-import { ChevronRight, Edit2, Plus, Power, Trash2, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, Edit2, FolderTree, Plus, Power, Trash2, X } from 'lucide-react';
 import { useCategories } from '../hooks/useCategories';
 import { categoriesService } from '../services/categoriesService';
 import { categorySchema } from '../schemas/categorySchema';
 import type { Category } from '../types/category';
 
 const PRIMARY = '#122a4c';
+type TreeCategory = Category & { filhos?: TreeCategory[] };
 
 const levelLabels: Record<number, string> = {
   1: 'Departamento',
@@ -14,8 +15,8 @@ const levelLabels: Record<number, string> = {
 };
 
 function buildTree(categories: Category[]) {
-  const byId = new Map(categories.map((category) => [category.id, { ...category, filhos: [] as Category[] }]));
-  const roots: Category[] = [];
+  const byId = new Map(categories.map((category) => [category.id, { ...category, filhos: [] as TreeCategory[] }]));
+  const roots: TreeCategory[] = [];
 
   byId.forEach((category) => {
     if (category.categoria_pai_id && byId.has(category.categoria_pai_id)) {
@@ -25,7 +26,7 @@ function buildTree(categories: Category[]) {
     }
   });
 
-  const sortCategories = (items: Category[]) => {
+  const sortCategories = (items: TreeCategory[]) => {
     items.sort((a, b) => (a.ordem_exibicao ?? 0) - (b.ordem_exibicao ?? 0) || a.nome.localeCompare(b.nome));
     items.forEach((item) => sortCategories(item.filhos ?? []));
   };
@@ -192,31 +193,60 @@ function CategoryForm({
 function CategoryRow({
   category,
   depth,
+  expandedIds,
+  onToggleExpanded,
   onEdit,
   onToggle,
   onDelete,
 }: {
-  category: Category;
+  category: TreeCategory;
   depth: number;
+  expandedIds: Set<string>;
+  onToggleExpanded: (categoryId: string) => void;
   onEdit: (category: Category) => void;
   onToggle: (category: Category) => void;
   onDelete: (category: Category) => void;
 }) {
+  const children = category.filhos ?? [];
+  const hasChildren = children.length > 0;
+  const isExpanded = expandedIds.has(category.id);
+  const childCount = children.length;
+  const grandChildCount = children.reduce((total, child) => total + (child.filhos?.length ?? 0), 0);
+  const level = category.nivel ?? 1;
+
   return (
     <>
-      <div className="grid grid-cols-[1fr_auto] lg:grid-cols-[1fr_120px_180px_100px_110px] gap-3 items-center bg-white border border-gray-200 rounded-xl px-4 py-3">
-        <div className="min-w-0" style={{ paddingLeft: depth * 22 }}>
+      <div
+        className="grid grid-cols-[1fr_auto] lg:grid-cols-[1fr_112px_150px_70px_106px] gap-2 items-center bg-white border border-gray-200 rounded-lg px-3 py-2 hover:border-gray-300 hover:shadow-sm transition-all"
+      >
+        <div className="min-w-0" style={{ paddingLeft: depth * 18 }}>
           <div className="flex items-center gap-2 min-w-0">
-            {depth > 0 && <ChevronRight className="w-4 h-4 text-gray-300 flex-shrink-0" />}
-            <span className="text-xl">{category.emoji || '📁'}</span>
+            <button
+              type="button"
+              onClick={() => hasChildren && onToggleExpanded(category.id)}
+              disabled={!hasChildren}
+              className={`w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 ${hasChildren ? 'hover:bg-gray-100 text-gray-600' : 'text-gray-200 cursor-default'}`}
+              title={hasChildren ? (isExpanded ? 'Recolher' : 'Expandir') : 'Sem subcategorias'}
+              aria-label={hasChildren ? (isExpanded ? `Recolher ${category.nome}` : `Expandir ${category.nome}`) : `${category.nome} sem filhos`}
+            >
+              {hasChildren && isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+            </button>
+            <span className="text-lg leading-none">{category.emoji || '📁'}</span>
             <div className="min-w-0">
-              <div className="font-semibold text-gray-800 truncate">{category.nome}</div>
-              <div className="text-xs text-gray-400 truncate">{category.caminho || category.nome}</div>
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="text-sm font-semibold text-gray-800 truncate">{category.nome}</div>
+                <span className="lg:hidden px-1.5 py-0.5 rounded bg-gray-100 text-[10px] font-medium text-gray-500 whitespace-nowrap">
+                  N{level}
+                </span>
+              </div>
+              <div className="text-[11px] text-gray-400 truncate">
+                {hasChildren ? `${childCount} filho${childCount === 1 ? '' : 's'}${grandChildCount ? ` · ${grandChildCount} subcategoria${grandChildCount === 1 ? '' : 's'}` : ''}` : (category.caminho || category.nome)}
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="hidden lg:block text-xs text-gray-600">{levelLabels[category.nivel ?? 1]}</div>
+        <div className="hidden lg:block text-xs text-gray-600">{levelLabels[level]}</div>
         <div className="hidden lg:block text-xs text-gray-500 truncate">{category.categoria_pai_nome || '-'}</div>
         <div className="hidden lg:block text-xs text-gray-500">{category.ordem_exibicao ?? 0}</div>
 
@@ -241,11 +271,13 @@ function CategoryRow({
         </div>
       </div>
 
-      {(category.filhos ?? []).map((child) => (
+      {isExpanded && children.map((child) => (
         <CategoryRow
           key={child.id}
           category={child}
           depth={depth + 1}
+          expandedIds={expandedIds}
+          onToggleExpanded={onToggleExpanded}
           onEdit={onEdit}
           onToggle={onToggle}
           onDelete={onDelete}
@@ -257,8 +289,40 @@ function CategoryRow({
 
 export function CategoriesScreen() {
   const [editing, setEditing] = useState<Category | null | undefined>(undefined);
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const { categories, fetchCategories, loading, toggle } = useCategories();
   const tree = useMemo(() => buildTree(categories), [categories]);
+  const allExpandableIds = useMemo(() => {
+    const ids: string[] = [];
+    const collect = (items: TreeCategory[]) => {
+      items.forEach((category) => {
+        if ((category.filhos ?? []).length > 0) {
+          ids.push(category.id);
+          collect(category.filhos ?? []);
+        }
+      });
+    };
+
+    collect(tree);
+    return ids;
+  }, [tree]);
+  const expandedCount = allExpandableIds.filter((id) => expandedIds.has(id)).length;
+
+  const handleToggleExpanded = (categoryId: string) => {
+    setExpandedIds((current) => {
+      const next = new Set(current);
+      if (next.has(categoryId)) {
+        next.delete(categoryId);
+      } else {
+        next.add(categoryId);
+      }
+      return next;
+    });
+  };
+
+  const handleToggleAll = () => {
+    setExpandedIds(expandedCount === allExpandableIds.length ? new Set() : new Set(allExpandableIds));
+  };
 
   const handleDelete = async (category: Category) => {
     if (!window.confirm(`Excluir "${category.nome}"? Categorias com filhos ou produtos vinculados serão bloqueadas pelo sistema.`)) return;
@@ -282,19 +346,35 @@ export function CategoriesScreen() {
         />
       )}
 
-      <div className="flex items-center justify-between mb-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-5">
         <div>
-          <h2 className="text-gray-900 font-semibold">Categorias</h2>
-          <p className="text-gray-500 text-sm mt-0.5">{categories.length} categorias cadastradas</p>
+          <div className="flex items-center gap-2">
+            <FolderTree className="w-5 h-5" style={{ color: PRIMARY }} />
+            <h2 className="text-gray-900 font-semibold">Categorias</h2>
+          </div>
+          <p className="text-gray-500 text-sm mt-0.5">
+            {tree.length} departamentos · {categories.length} categorias cadastradas
+          </p>
         </div>
-        <button
-          onClick={() => setEditing(null)}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-white text-sm font-medium"
-          style={{ backgroundColor: PRIMARY }}
-        >
-          <Plus className="w-4 h-4" />
-          Nova Categoria
-        </button>
+        <div className="flex items-center gap-2">
+          {allExpandableIds.length > 0 && (
+            <button
+              type="button"
+              onClick={handleToggleAll}
+              className="px-3 py-2 rounded-lg border border-gray-200 bg-white text-gray-600 text-sm font-medium hover:bg-gray-50"
+            >
+              {expandedCount === allExpandableIds.length ? 'Recolher tudo' : 'Expandir tudo'}
+            </button>
+          )}
+          <button
+            onClick={() => setEditing(null)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-white text-sm font-medium"
+            style={{ backgroundColor: PRIMARY }}
+          >
+            <Plus className="w-4 h-4" />
+            Nova Categoria
+          </button>
+        </div>
       </div>
 
       {loading ? (
@@ -303,7 +383,7 @@ export function CategoriesScreen() {
         </div>
       ) : (
         <div className="space-y-2">
-          <div className="hidden lg:grid grid-cols-[1fr_120px_180px_100px_110px] gap-3 px-4 text-xs font-semibold uppercase tracking-wider text-gray-400">
+          <div className="hidden lg:grid grid-cols-[1fr_112px_150px_70px_106px] gap-2 px-3 text-xs font-semibold uppercase tracking-wider text-gray-400">
             <span>Nome e caminho</span>
             <span>Nível</span>
             <span>Pai</span>
@@ -315,6 +395,8 @@ export function CategoriesScreen() {
               key={category.id}
               category={category}
               depth={0}
+              expandedIds={expandedIds}
+              onToggleExpanded={handleToggleExpanded}
               onEdit={setEditing}
               onToggle={(cat) => toggle(cat.id, cat.ativa)}
               onDelete={handleDelete}
