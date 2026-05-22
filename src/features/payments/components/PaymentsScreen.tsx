@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Search, CreditCard, Smartphone, Banknote, CheckCircle2, Clock, XCircle, RefreshCw } from 'lucide-react';
 import api from '@/shared/lib/api';
+import { showSystemNotice } from '@/shared/components/SystemNoticeModal';
 
 const PRIMARY = '#122a4c';
 
@@ -26,6 +27,17 @@ export function PaymentsScreen() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('Todos');
   const [loading, setLoading] = useState(true);
+  const [refundingPaymentId, setRefundingPaymentId] = useState('');
+
+  const user = (() => {
+    try {
+      const userJson = localStorage.getItem('user');
+      return userJson ? JSON.parse(userJson) : null;
+    } catch {
+      return null;
+    }
+  })();
+  const canRefundPayments = user?.perfil === 'administrador';
 
   const fetchPayments = async ({ silent = false } = {}) => {
     try {
@@ -87,6 +99,43 @@ export function PaymentsScreen() {
       console.error(err);
     } finally {
       if (!silent) setLoading(false);
+    }
+  };
+
+  const getApiErrorMessage = (error: any, fallback: string) => {
+    const payload = error?.response?.data;
+    return (
+      payload?.message ||
+      payload?.error?.message ||
+      payload?.error ||
+      error?.message ||
+      fallback
+    );
+  };
+
+  const refundPayment = async (payment: any) => {
+    if (!payment?.originalId || payment.status !== 'Pago' || refundingPaymentId) return;
+
+    const confirmed = window.confirm(
+      `Confirmar reembolso total de R$ ${payment.value.toLocaleString('pt-BR', {
+        minimumFractionDigits: 2,
+      })} para ${payment.customer}?`
+    );
+    if (!confirmed) return;
+
+    try {
+      setRefundingPaymentId(payment.originalId);
+      await api.post(`/mercadopago/payment/${payment.originalId}/refund`, {});
+      showSystemNotice('Reembolso solicitado com sucesso.');
+      await fetchPayments({ silent: true });
+    } catch (error) {
+      console.error('Error refunding payment:', error);
+      showSystemNotice(
+        getApiErrorMessage(error, 'Não foi possível realizar o reembolso. Tente novamente.'),
+        'Erro no reembolso'
+      );
+    } finally {
+      setRefundingPaymentId('');
     }
   };
 
@@ -173,12 +222,15 @@ export function PaymentsScreen() {
                 <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Valor</th>
                 <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
                 <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider hidden lg:table-cell">Data/Hora</th>
+                {canRefundPayments && (
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Ações</th>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
+                  <td colSpan={canRefundPayments ? 7 : 6} className="px-4 py-8 text-center text-gray-500">
                     {loading ? 'Carregando...' : 'Nenhum pagamento encontrado.'}
                   </td>
                 </tr>
@@ -209,6 +261,26 @@ export function PaymentsScreen() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right text-xs text-gray-400 hidden lg:table-cell whitespace-nowrap">{payment.date}</td>
+                    {canRefundPayments && (
+                      <td className="px-4 py-3 text-right">
+                        {payment.status === 'Pago' ? (
+                          <button
+                            type="button"
+                            onClick={() => refundPayment(payment)}
+                            disabled={refundingPaymentId === payment.originalId}
+                            className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-blue-200 px-2.5 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
+                            title="Reembolsar pagamento"
+                          >
+                            <RefreshCw
+                              className={`w-3.5 h-3.5 ${refundingPaymentId === payment.originalId ? 'animate-spin' : ''}`}
+                            />
+                            Reembolsar
+                          </button>
+                        ) : (
+                          <span className="text-xs text-gray-300">-</span>
+                        )}
+                      </td>
+                    )}
                   </tr>
                 );
               })}
