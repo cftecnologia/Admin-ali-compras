@@ -6,7 +6,6 @@ import {
   ChevronRight, Store, Key, Bike
 } from 'lucide-react';
 import api from '@/shared/lib/api';
-import { disableAdminPush, fetchNotifications, listenForAdminPush } from '@/features/notifications/services/notificationsService';
 
 const PRIMARY = '#122a4c';
 const PRIMARY_LIGHT = '#1a3d6e';
@@ -76,36 +75,45 @@ export function AdminLayout() {
   useEffect(() => {
     let active = true;
     let unlisten = () => {};
-    const refreshCount = () => {
-      fetchNotifications()
-        .then((items) => {
-          if (active) setUnreadCount(items.filter((item) => !item.read_at).length);
-        })
-        .catch(() => {});
+    let listenerStarting = false;
+
+    const updateCount = (event: Event) => {
+      const count = (event as CustomEvent<number>).detail;
+      if (Number.isInteger(count) && count >= 0) setUnreadCount(count);
     };
 
-    refreshCount();
-    listenForAdminPush((payload) => {
-      refreshCount();
-      if ('Notification' in window && Notification.permission === 'granted') {
-        const data = payload.data || {};
-        const foregroundNotification = new Notification(data.title || 'Nova notificação', { body: data.body });
-        foregroundNotification.onclick = () => {
-          window.focus();
-          if (data.route) navigate(data.route);
-        };
+    const startForegroundListener = async () => {
+      if (listenerStarting || !localStorage.getItem('admin_notification_fcm_token')) return;
+      listenerStarting = true;
+      const { listenForAdminPush } = await import('@/features/notifications/services/notificationsService');
+      const cleanup = await listenForAdminPush((payload) => {
+        if (!active) return;
+        setUnreadCount((current) => current + 1);
+        if ('Notification' in window && Notification.permission === 'granted') {
+          const data = payload.data || {};
+          const foregroundNotification = new Notification(data.title || 'Nova notificação', { body: data.body });
+          foregroundNotification.onclick = () => {
+            window.focus();
+            if (data.route) navigate(data.route);
+          };
+        }
+      });
+      if (active) {
+        unlisten = cleanup;
+      } else {
+        cleanup();
       }
-    }).then((cleanup) => {
-      if (active) unlisten = cleanup;
-      else cleanup();
-    });
-    const handleReceived = () => refreshCount();
-    window.addEventListener('notification-received', handleReceived);
+    };
+
+    void startForegroundListener();
+    window.addEventListener('admin-notification-count-updated', updateCount);
+    window.addEventListener('admin-push-enabled', startForegroundListener);
 
     return () => {
       active = false;
       unlisten();
-      window.removeEventListener('notification-received', handleReceived);
+      window.removeEventListener('admin-notification-count-updated', updateCount);
+      window.removeEventListener('admin-push-enabled', startForegroundListener);
     };
   }, [navigate]);
 
@@ -115,7 +123,10 @@ export function AdminLayout() {
   };
 
   const handleLogout = async () => {
-    await disableAdminPush().catch(() => {});
+    if (localStorage.getItem('admin_notification_fcm_token')) {
+      const { disableAdminPush } = await import('@/features/notifications/services/notificationsService');
+      await disableAdminPush().catch(() => {});
+    }
     localStorage.removeItem('token');
     localStorage.removeItem('refresh_token');
     localStorage.removeItem('user');

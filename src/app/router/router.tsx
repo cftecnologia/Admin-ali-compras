@@ -20,7 +20,6 @@ import { UsersPage } from "@/pages/Users/UsersPage";
 import { SystemPermissionsPage } from "@/pages/SystemPermissions/SystemPermissionsPage";
 import { SettingsPage } from "@/pages/Settings/SettingsPage";
 import { EntregadoresPage } from "@/pages/Entregadores/EntregadoresPage";
-import { NotificationsPage } from "@/pages/Notifications/NotificationsPage";
 import { MyDeliveriesPage } from "@/pages/Driver/MyDeliveriesPage";
 import { RouteDetailPage } from "@/pages/Driver/RouteDetailPage";
 
@@ -71,7 +70,13 @@ export const router = createBrowserRouter([
           { path: "settings", Component: SettingsPage },
           { path: "configuracoes", Component: SettingsPage },
           { path: "entregadores", Component: EntregadoresPage },
-          { path: "notifications", Component: NotificationsPage },
+          {
+            path: "notifications",
+            lazy: async () => {
+              const { NotificationsPage } = await import("@/pages/Notifications/NotificationsPage");
+              return { Component: NotificationsPage };
+            },
+          },
         ],
       },
     ],

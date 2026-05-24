@@ -33,40 +33,62 @@ export function NotificationsScreen() {
   const [tab, setTab] = useState<'history' | 'campaigns'>('history');
   const [notifications, setNotifications] = useState<InternalNotification[]>([]);
   const [campaigns, setCampaigns] = useState<PushCampaign[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loadingHistory, setLoadingHistory] = useState(true);
+  const [loadingCampaigns, setLoadingCampaigns] = useState(false);
+  const [campaignsLoaded, setCampaignsLoaded] = useState(false);
   const [feedback, setFeedback] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({ title: '', body: '', image_url: '', deep_link: '/promocoes' });
 
-  const load = async () => {
-    setLoading(true);
+  const setNotificationItems = (items: InternalNotification[]) => {
+    setNotifications(items);
+    window.dispatchEvent(new CustomEvent('admin-notification-count-updated', {
+      detail: items.filter((item) => !item.read_at).length,
+    }));
+  };
+
+  const loadHistory = async () => {
+    setLoadingHistory(true);
     try {
-      const [notificationData, campaignData] = await Promise.all([
-        fetchNotifications(),
-        fetchCampaigns(),
-      ]);
-      setNotifications(notificationData);
-      setCampaigns(campaignData);
+      setNotificationItems(await fetchNotifications());
     } catch (error: any) {
       setFeedback(error?.response?.data?.message || 'Não foi possível carregar notificações.');
     } finally {
-      setLoading(false);
+      setLoadingHistory(false);
+    }
+  };
+
+  const loadCampaigns = async () => {
+    setLoadingCampaigns(true);
+    try {
+      setCampaigns(await fetchCampaigns());
+      setCampaignsLoaded(true);
+    } catch (error: any) {
+      setFeedback(error?.response?.data?.message || 'Não foi possível carregar campanhas.');
+    } finally {
+      setLoadingCampaigns(false);
     }
   };
 
   useEffect(() => {
-    void load();
-    const refresh = () => void load();
+    void loadHistory();
+    const refresh = () => void loadHistory();
     window.addEventListener('notification-received', refresh);
     return () => window.removeEventListener('notification-received', refresh);
   }, []);
+
+  useEffect(() => {
+    if (tab === 'campaigns' && !campaignsLoaded && !loadingCampaigns) {
+      void loadCampaigns();
+    }
+  }, [tab, campaignsLoaded, loadingCampaigns]);
 
   const unread = useMemo(() => notifications.filter((item) => !item.read_at).length, [notifications]);
 
   const markRead = async (notification: InternalNotification) => {
     if (!notification.read_at) {
       const updated = await readNotification(notification.id);
-      setNotifications((items) => items.map((item) => item.id === updated.id ? updated : item));
+      setNotificationItems(notifications.map((item) => item.id === updated.id ? updated : item));
     }
     if (notification.data?.route) navigate(notification.data.route);
   };
@@ -76,7 +98,7 @@ export function NotificationsScreen() {
       notifications.filter((item) => !item.read_at).map((item) => readNotification(item.id))
     );
     const map = new Map(updates.map((item) => [item.id, item]));
-    setNotifications((items) => items.map((item) => map.get(item.id) || item));
+    setNotificationItems(notifications.map((item) => map.get(item.id) || item));
   };
 
   const activatePush = async () => {
@@ -93,15 +115,22 @@ export function NotificationsScreen() {
     setSubmitting(true);
     setFeedback('');
     try {
-      await createCampaign({
+      const campaign = await createCampaign({
         title: form.title,
         body: form.body,
         image_url: form.image_url || null,
         deep_link: form.deep_link || null,
       });
       setForm({ title: '', body: '', image_url: '', deep_link: '/promocoes' });
-      setFeedback('Campanha encaminhada para envio.');
-      await load();
+      if (campaign.total_devices === 0) {
+        setFeedback('Histórico criado, mas nenhum cliente desta loja ativou notificações push.');
+      } else if (campaign.total_sent === 0) {
+        setFeedback('Nenhum push foi entregue. Verifique a configuração FCM do backend.');
+      } else {
+        setFeedback('Campanha enviada por push.');
+      }
+      setCampaigns((items) => [campaign, ...items.filter((item) => item.id !== campaign.id)]);
+      setCampaignsLoaded(true);
       setTab('campaigns');
     } catch (error: any) {
       setFeedback(error?.response?.data?.message || error?.message || 'Não foi possível enviar a campanha.');
@@ -142,7 +171,7 @@ export function NotificationsScreen() {
               </button>
             )}
           </div>
-          {loading ? <p className="text-sm text-gray-500">Carregando...</p> : (
+          {loadingHistory ? <p className="text-sm text-gray-500">Carregando...</p> : (
             <div className="space-y-2">
               {notifications.map((item) => (
                 <button key={item.id} onClick={() => void markRead(item)} className={`w-full text-left flex items-start gap-3 p-4 rounded-md border ${item.read_at ? 'bg-gray-50 border-gray-100' : 'bg-white border-gray-200'}`}>
@@ -181,6 +210,7 @@ export function NotificationsScreen() {
           </form>
           <section>
             <h3 className="text-sm font-semibold text-gray-900 mb-3">Campanhas enviadas</h3>
+            {loadingCampaigns ? <p className="text-sm text-gray-500 mb-3">Carregando...</p> : null}
             <div className="overflow-x-auto border border-gray-200 rounded-md bg-white">
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 text-gray-500">
@@ -203,7 +233,7 @@ export function NotificationsScreen() {
                       <td className="px-3 py-3 text-right text-red-700">{campaign.total_failed || 0}</td>
                     </tr>
                   ))}
-                  {!campaigns.length && (
+                  {!loadingCampaigns && !campaigns.length && (
                     <tr><td colSpan={4} className="p-8 text-center text-gray-500">Nenhuma campanha enviada.</td></tr>
                   )}
                 </tbody>

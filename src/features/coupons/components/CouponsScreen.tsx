@@ -45,8 +45,6 @@ function CouponForm({ coupon, onClose, onSuccess }: { coupon?: any; onClose: () 
         valor_minimo_pedido: toNullableNumber(String(minOrder)),
         expira_em: expires ? new Date(expires).toISOString() : null,
         ativo: coupon ? coupon.raw_ativo : true,
-        // Mock loja_id for now, in a real app it'd be from auth context
-        loja_id: '123e4567-e89b-12d3-a456-426614174000' 
       };
       
       if (coupon?.id) {
@@ -57,9 +55,9 @@ function CouponForm({ coupon, onClose, onSuccess }: { coupon?: any; onClose: () 
       
       onSuccess();
       onClose();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving coupon', error);
-      showSystemNotice('Erro ao salvar cupom. Verifique os campos.');
+      showSystemNotice(error?.response?.data?.error?.message || 'Erro ao salvar cupom. Verifique os campos.');
     } finally {
       setLoading(false);
     }

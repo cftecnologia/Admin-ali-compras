@@ -72,6 +72,7 @@ export async function enableAdminPush() {
     app_type: 'admin_panel',
   });
   localStorage.setItem(DEVICE_TOKEN_STORAGE_KEY, token);
+  window.dispatchEvent(new Event('admin-push-enabled'));
 
   return token;
 }
