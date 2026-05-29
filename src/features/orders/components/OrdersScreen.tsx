@@ -479,6 +479,7 @@ export function OrdersScreen() {
     }
 
     try {
+      const releasedOrderId = delivery.pedido_id;
       setUnassigningDeliveryId(delivery.id);
       const response = await api.patch(`/entregas/${delivery.id}/desvincular-entregador`);
       const updatedDelivery = response.data.data || response.data;
@@ -492,7 +493,7 @@ export function OrdersScreen() {
       }
 
       setSelectedOrderIds((prev) =>
-        prev.filter((orderId) => orderId !== updatedDelivery.pedido_id),
+        prev.filter((orderId) => orderId !== releasedOrderId),
       );
     } catch (error) {
       console.error("Error unassigning courier:", error);
