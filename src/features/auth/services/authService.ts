@@ -1,5 +1,5 @@
 import api from "@/shared/lib/api";
-import type { ForgotPasswordResponse, LoginCredentials, LoginResponse } from "../types/auth";
+import type { ForgotPasswordResponse, LoginCredentials, LoginResponse, MfaStatus } from "../types/auth";
 
 export const authService = {
   async login(credentials: LoginCredentials) {
@@ -40,5 +40,29 @@ export const authService = {
     }
 
     return data.user;
+  },
+
+  async getMfaStatus() {
+    const response = await api.get<MfaStatus>("/auth/mfa/status");
+    return response.data;
+  },
+
+  async enrollMfa() {
+    const response = await api.post<{ id: string; totp: { qr_code: string; secret: string } }>("/auth/mfa/enroll");
+    return response.data;
+  },
+
+  async challengeMfa(factorId: string) {
+    const response = await api.post<{ id: string }>("/auth/mfa/challenge", { factor_id: factorId });
+    return response.data;
+  },
+
+  async verifyMfa(factorId: string, challengeId: string, code: string) {
+    const response = await api.post<LoginResponse>("/auth/mfa/verify", {
+      factor_id: factorId,
+      challenge_id: challengeId,
+      code,
+    });
+    return response.data;
   },
 };

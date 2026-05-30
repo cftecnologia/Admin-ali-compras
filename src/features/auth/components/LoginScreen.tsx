@@ -4,6 +4,8 @@ import { Store, Eye, EyeOff, Lock, Mail, AlertCircle, ArrowLeft } from 'lucide-r
 import { useAuth } from '../hooks/useAuth';
 import { loginSchema } from '../schemas/loginSchema';
 import { authService } from '../services/authService';
+import { MfaLoginStep } from './MfaLoginStep';
+import type { LoginResponse } from '../types/auth';
 
 const PRIMARY = '#122a4c';
 const PLATFORM_BRANDING = {
@@ -26,11 +28,34 @@ export function LoginScreen() {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
+  const [mfaSession, setMfaSession] = useState<LoginResponse | null>(null);
   const navigate = useNavigate();
   const { loginAs, persistSession } = useAuth();
 
   const primaryColor = PLATFORM_BRANDING.cor_primaria;
   const secondaryColor = PLATFORM_BRANDING.cor_secundaria;
+
+  if (mfaSession) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-100 p-6">
+        <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-8 shadow-sm">
+          <MfaLoginStep
+            session={mfaSession}
+            onCancel={() => {
+              localStorage.removeItem('token');
+              localStorage.removeItem('refresh_token');
+              localStorage.removeItem('user');
+              setMfaSession(null);
+            }}
+            onComplete={(session) => {
+              persistSession(session);
+              navigate('/dashboard');
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -113,6 +138,11 @@ export function LoginScreen() {
             navigate('/driver');
             return;
           }
+        }
+
+        if (response.mfa_required && response.aal !== 'aal2') {
+          setMfaSession(response);
+          return;
         }
 
         navigate('/dashboard');

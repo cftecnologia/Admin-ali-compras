@@ -3,6 +3,7 @@ import { Search, CreditCard, Smartphone, Banknote, CheckCircle2, Clock, XCircle,
 import api from '@/shared/lib/api';
 import { showSystemNotice } from '@/shared/components/SystemNoticeModal';
 import { formatBrasiliaDate } from '@/shared/lib/dateTime';
+import { MfaApprovalModal, type MfaApproval } from '@/shared/components/MfaApprovalModal';
 
 const PRIMARY = '#122a4c';
 
@@ -29,6 +30,7 @@ export function PaymentsScreen() {
   const [statusFilter, setStatusFilter] = useState('Todos');
   const [loading, setLoading] = useState(true);
   const [refundingPaymentId, setRefundingPaymentId] = useState('');
+  const [refundApprovalPayment, setRefundApprovalPayment] = useState<any | null>(null);
 
   const user = (() => {
     try {
@@ -38,7 +40,7 @@ export function PaymentsScreen() {
       return null;
     }
   })();
-  const canRefundPayments = user?.perfil === 'administrador';
+  const canRefundPayments = ['administrador', 'operador', 'separador', 'financeiro'].includes(user?.perfil);
 
   const fetchPayments = async ({ silent = false } = {}) => {
     try {
@@ -124,19 +126,12 @@ export function PaymentsScreen() {
     return message;
   };
 
-  const refundPayment = async (payment: any) => {
+  const refundPayment = async (payment: any, approval: MfaApproval) => {
     if (!payment?.originalId || payment.status !== 'Pago' || refundingPaymentId) return;
-
-    const confirmed = window.confirm(
-      `Confirmar reembolso total de R$ ${payment.value.toLocaleString('pt-BR', {
-        minimumFractionDigits: 2,
-      })} para ${payment.customer}?`
-    );
-    if (!confirmed) return;
 
     try {
       setRefundingPaymentId(payment.originalId);
-      await api.post(`/mercadopago/payment/${payment.originalId}/refund`, {});
+      await api.post(`/mercadopago/payment/${payment.originalId}/refund`, { mfa_approval: approval });
       showSystemNotice('Reembolso solicitado com sucesso.');
       await fetchPayments({ silent: true });
     } catch (error) {
@@ -147,6 +142,7 @@ export function PaymentsScreen() {
       );
     } finally {
       setRefundingPaymentId('');
+      setRefundApprovalPayment(null);
     }
   };
 
@@ -277,7 +273,7 @@ export function PaymentsScreen() {
                         {payment.status === 'Pago' ? (
                           <button
                             type="button"
-                            onClick={() => refundPayment(payment)}
+                            onClick={() => setRefundApprovalPayment(payment)}
                             disabled={refundingPaymentId === payment.originalId}
                             className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-blue-200 px-2.5 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
                             title="Reembolsar pagamento"
@@ -299,6 +295,14 @@ export function PaymentsScreen() {
           </table>
         </div>
       </div>
+      <MfaApprovalModal
+        open={Boolean(refundApprovalPayment)}
+        title="Aprovar reembolso"
+        description={refundApprovalPayment ? `Confirme o reembolso total de R$ ${refundApprovalPayment.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} para ${refundApprovalPayment.customer}.` : ""}
+        loading={Boolean(refundingPaymentId)}
+        onClose={() => setRefundApprovalPayment(null)}
+        onConfirm={(approval) => void refundPayment(refundApprovalPayment, approval)}
+      />
     </div>
   );
 }

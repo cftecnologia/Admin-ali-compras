@@ -58,6 +58,7 @@ import {
 import { DeliveryAssignmentModal } from '@/features/orders/components/DeliveryAssignmentModal';
 import { OrderItemsChecklistModal } from '@/features/orders/components/OrderItemsChecklistModal';
 import { showSystemNotice } from '@/shared/components/SystemNoticeModal';
+import { MfaApprovalModal, type MfaApproval } from '@/shared/components/MfaApprovalModal';
 
 const getWhatsappPhone = (phone: any) => {
   const digits = String(phone || "").replace(/\D/g, "");
@@ -130,6 +131,7 @@ export function OrdersScreen() {
   const [checkingNewOrders, setCheckingNewOrders] = useState(false);
   const [archivedStartDate, setArchivedStartDate] = useState("");
   const [archivedEndDate, setArchivedEndDate] = useState("");
+  const [cancelApprovalOrderId, setCancelApprovalOrderId] = useState("");
   const PER_PAGE = 20;
 
   const user = (() => {
@@ -687,10 +689,10 @@ export function OrdersScreen() {
     }
   };
 
-  const cancelOrder = async (id: string) => {
+  const cancelOrder = async (id: string, approval: MfaApproval) => {
     try {
       setCancellingOrderId(id);
-      await api.patch(`/pedidos/${id}/cancelar`);
+      await api.patch(`/pedidos/${id}/cancelar`, { mfa_approval: approval });
       setOrders((prev) =>
         prev.map((o) => (o.id === id ? { ...o, status: "cancelado" } : o)),
       );
@@ -704,6 +706,7 @@ export function OrdersScreen() {
       );
     } finally {
       setCancellingOrderId((currentId) => (currentId === id ? "" : currentId));
+      setCancelApprovalOrderId("");
     }
   };
 
@@ -2280,7 +2283,7 @@ export function OrdersScreen() {
               {getStatusLabel(selected.status) !== "Cancelado" &&
                 getStatusLabel(selected.status) !== "Entregue" && (
                   <button
-                    onClick={() => cancelOrder(selected.id)}
+                    onClick={() => setCancelApprovalOrderId(selected.id)}
                     disabled={selectedOrderUpdating}
                     aria-busy={selectedCancelling}
                     className="w-full py-2.5 rounded-lg text-red-600 text-sm font-medium border border-red-200 hover:bg-red-50 transition-colors disabled:cursor-wait disabled:opacity-70 flex items-center justify-center gap-2"
@@ -2302,6 +2305,14 @@ export function OrdersScreen() {
           </div>
         </div>
       )}
+      <MfaApprovalModal
+        open={Boolean(cancelApprovalOrderId)}
+        title="Aprovar cancelamento"
+        description="Selecione um administrador do mercado e confirme o código do autenticador."
+        loading={Boolean(cancellingOrderId)}
+        onClose={() => setCancelApprovalOrderId("")}
+        onConfirm={(approval) => void cancelOrder(cancelApprovalOrderId, approval)}
+      />
     </div>
   );
 }

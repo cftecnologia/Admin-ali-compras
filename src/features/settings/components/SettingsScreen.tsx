@@ -20,6 +20,7 @@ import api from '@/shared/lib/api';
 import LoadingModal from '@/shared/components/ui/LoadingModal';
 import { showSystemNotice } from '@/shared/components/SystemNoticeModal';
 import { getApiList } from '@/shared/utils/apiData';
+import { SecurityMfaPanel } from './SecurityMfaPanel';
 
 const PRIMARY = "#122a4c";
 
@@ -30,6 +31,7 @@ const sections = [
   "Áreas de Entrega",
   "Pagamentos",
   "Notificações",
+  "Segurança",
 ];
 
 export function SettingsScreen() {
@@ -1073,6 +1075,7 @@ export function SettingsScreen() {
               </div>
             </div>
           )}
+          {activeSection === "Segurança" && <SecurityMfaPanel />}
         </div>
       </div>
 
