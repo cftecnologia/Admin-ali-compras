@@ -25,6 +25,7 @@ import {
   TruckIcon,
   Navigation,
   Loader2,
+  RefreshCw,
 } from "lucide-react";
 import api from '@/shared/lib/api';
 import { formatBrasiliaTime } from '@/shared/lib/dateTime';
@@ -70,6 +71,25 @@ const buildWhatsappUrl = (phone: any, message: string) => {
   return `https://wa.me/${normalizedPhone}?text=${encodeURIComponent(message)}`;
 };
 
+const getOrderCreatedAt = (order: any) =>
+  order?.criado_em || order?.created_at || order?.realizado_em || null;
+
+const getLatestOrderCreatedAt = (orders: any[]) => {
+  const timestamps = orders
+    .map((order) => {
+      const value = getOrderCreatedAt(order);
+      const time = value ? new Date(value).getTime() : Number.NaN;
+      return Number.isFinite(time) ? time : null;
+    })
+    .filter((time): time is number => time !== null);
+
+  if (timestamps.length === 0) {
+    return new Date().toISOString();
+  }
+
+  return new Date(Math.max(...timestamps)).toISOString();
+};
+
 export function OrdersScreen() {
   const [searchParams] = useSearchParams();
   const [orders, setOrders] = useState<any[]>([]);
@@ -113,6 +133,9 @@ export function OrdersScreen() {
   const [primaryColor, setPrimaryColor] = useState(PRIMARY);
   const [storePrintData, setStorePrintData] = useState<any | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [newOrdersCount, setNewOrdersCount] = useState(0);
+  const [lastOrdersLoadedAt, setLastOrdersLoadedAt] = useState<string | null>(null);
+  const [checkingNewOrders, setCheckingNewOrders] = useState(false);
   const PER_PAGE = 20;
 
   const user = (() => {
@@ -211,6 +234,32 @@ export function OrdersScreen() {
     return () => clearTimeout(timer);
   }, [search]);
 
+  const getOrderQueryParams = (pageNum = 1) => ({
+    page: pageNum,
+    per_page: PER_PAGE,
+    arquivado: viewMode === "arquivados" ? "true" : "false",
+    status:
+      viewMode === "arquivados"
+        ? undefined
+        : frontendToBackendStatus[statusFilter],
+    tipo_pedido:
+      viewMode === "arquivados" || typeFilter === "Todos"
+        ? undefined
+        : typeFilter.toLowerCase(),
+    busca: search || undefined,
+  });
+
+  const getNewOrdersQueryParams = () => ({
+    ...getOrderQueryParams(1),
+    page: undefined,
+    per_page: undefined,
+    criado_apos: lastOrdersLoadedAt || undefined,
+    bairro:
+      viewMode === "bairros" && bairroFilter !== "Todos"
+        ? bairroFilter
+        : undefined,
+  });
+
   const fetchOrders = async (
     pageNum = 1,
     reset = false,
@@ -218,20 +267,7 @@ export function OrdersScreen() {
   ) => {
     try {
       if (!options.silent) setLoading(true);
-      const params: any = {
-        page: pageNum,
-        per_page: PER_PAGE,
-        arquivado: viewMode === "arquivados" ? "true" : "false",
-        status:
-          viewMode === "arquivados"
-            ? undefined
-            : frontendToBackendStatus[statusFilter],
-        tipo_pedido:
-          viewMode === "arquivados" || typeFilter === "Todos"
-            ? undefined
-            : typeFilter.toLowerCase(),
-        busca: search || undefined,
-      };
+      const params: any = getOrderQueryParams(pageNum);
 
       const response = await api.get("/pedidos", { params });
       const rawData = response.data.data;
@@ -245,6 +281,10 @@ export function OrdersScreen() {
       setHasMore(more);
       setOrders((prev) => (reset ? displayData : [...prev, ...displayData]));
       setPage(pageNum);
+      if (reset) {
+        setLastOrdersLoadedAt(getLatestOrderCreatedAt(displayData));
+        setNewOrdersCount(0);
+      }
     } catch (error) {
       console.error("Error fetching orders:", error);
     } finally {
@@ -252,14 +292,41 @@ export function OrdersScreen() {
     }
   };
 
+  const checkNewOrders = async () => {
+    if (!lastOrdersLoadedAt) return;
+
+    try {
+      setCheckingNewOrders(true);
+      const response = await api.get("/pedidos/novos/contagem", {
+        params: getNewOrdersQueryParams(),
+      });
+      const count = Number(response.data?.data?.count ?? response.data?.count ?? 0);
+      setNewOrdersCount(Number.isFinite(count) ? count : 0);
+    } catch (error) {
+      console.error("Error checking new orders:", error);
+    } finally {
+      setCheckingNewOrders(false);
+    }
+  };
+
   useEffect(() => {
     const intervalId = window.setInterval(() => {
-      fetchOrders(1, true, { silent: true });
-      fetchAuxiliaryData();
-    }, 15000);
+      checkNewOrders();
+    }, 60000);
 
     return () => window.clearInterval(intervalId);
-  }, [statusFilter, typeFilter, search, viewMode]);
+  }, [statusFilter, typeFilter, bairroFilter, search, viewMode, lastOrdersLoadedAt]);
+
+  const handleRefreshNewOrders = async () => {
+    if (newOrdersCount <= 0) return;
+
+    setOrders([]);
+    setPage(1);
+    await Promise.all([
+      fetchOrders(1, true),
+      fetchAuxiliaryData(),
+    ]);
+  };
 
   const handleLoadMore = () => {
     fetchOrders(page + 1);
@@ -687,6 +754,12 @@ export function OrdersScreen() {
           typeFilter !== "Todos",
           bairroFilter !== "Todos",
         ].filter(Boolean).length;
+  const newOrdersLabel =
+    newOrdersCount === 0
+      ? "Nenhum pedido novo"
+      : newOrdersCount === 1
+        ? "1 novo pedido"
+        : `${newOrdersCount} novos pedidos`;
   const selectedPayment = selectedPayments[0] || selected?.pagamento || null;
   const selectedForPrint = selected
     ? { ...selected, pagamento: selectedPayment }
@@ -1127,6 +1200,29 @@ export function OrdersScreen() {
               )}
             </div>
           )}
+        </div>
+
+        <div className="px-4 py-3 bg-white border-b border-gray-100">
+          <button
+            type="button"
+            disabled={newOrdersCount === 0}
+            onClick={handleRefreshNewOrders}
+            className={`inline-flex w-full items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition-all sm:w-auto ${
+              newOrdersCount > 0
+                ? "border-transparent text-white shadow-sm animate-pulse"
+                : "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400"
+            }`}
+            style={
+              newOrdersCount > 0
+                ? { backgroundColor: PRIMARY }
+                : undefined
+            }
+          >
+            <RefreshCw
+              className={`h-4 w-4 ${checkingNewOrders && newOrdersCount > 0 ? "animate-spin" : ""}`}
+            />
+            {newOrdersLabel}
+          </button>
         </div>
 
         {/* ── LISTA VIEW ─────────────────────────────── */}
