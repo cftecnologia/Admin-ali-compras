@@ -78,14 +78,14 @@ export function DriverLayout() {
       </div>
 
       {/* Content Area */}
-      <main className="flex-1 overflow-y-auto relative pb-20 sm:pb-0">
+      <main className="flex-1 min-h-0 overflow-y-auto relative">
         <div className="max-w-3xl mx-auto min-h-full">
           <Outlet />
         </div>
       </main>
 
       {/* Bottom Nav */}
-      <nav className="fixed bottom-0 left-0 right-0 h-16 bg-white border-t border-gray-200 flex items-center shrink-0 z-50">
+      <nav className="h-16 bg-white border-t border-gray-200 flex items-center shrink-0 z-50">
         {navItems.map((item) => {
           const isActive = location.pathname === item.path || (item.path === '/driver' && location.pathname.startsWith('/driver/route'));
           const isLogout = item.label === 'Sair';

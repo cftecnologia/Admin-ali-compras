@@ -280,9 +280,9 @@ export function RouteDetailScreen() {
       )}
 
       {problemFor && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50" onClick={() => setProblemFor(null)}>
+        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50" onClick={() => setProblemFor(null)}>
           <div
-            className="bg-white w-full sm:max-w-sm sm:rounded-2xl rounded-t-2xl p-5"
+            className="max-h-[calc(100dvh-1rem)] overflow-y-auto bg-white w-full sm:max-w-sm sm:rounded-2xl rounded-t-2xl p-5"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-3">
@@ -311,9 +311,9 @@ export function RouteDetailScreen() {
       )}
 
       {receiptKeyFor && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50" onClick={() => setReceiptKeyFor(null)}>
+        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50" onClick={() => setReceiptKeyFor(null)}>
           <div
-            className="bg-white w-full sm:max-w-sm sm:rounded-2xl rounded-t-2xl p-5"
+            className="max-h-[calc(100dvh-1rem)] overflow-y-auto bg-white w-full sm:max-w-sm sm:rounded-2xl rounded-t-2xl p-5"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-3">
