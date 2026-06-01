@@ -26,6 +26,7 @@ import {
   Navigation,
   Loader2,
   RefreshCw,
+  AlertTriangle,
 } from "lucide-react";
 import api from '@/shared/lib/api';
 import { formatBrasiliaTime } from '@/shared/lib/dateTime';
@@ -84,6 +85,11 @@ const getOrderCustomerPhone = (order: any) =>
   order?.phone ||
   "";
 
+const getCancellationRequest = (order: any) => order?.solicitacao_cancelamento || null;
+const hasPendingCancellationRequest = (order: any) =>
+  getCancellationRequest(order)?.status === "pendente";
+const parseCurrencyInput = (value: string) => Number(value.replace(",", "."));
+
 export function OrdersScreen() {
   const [searchParams] = useSearchParams();
   const [orders, setOrders] = useState<any[]>([]);
@@ -134,6 +140,11 @@ export function OrdersScreen() {
   const [archivedStartDate, setArchivedStartDate] = useState("");
   const [archivedEndDate, setArchivedEndDate] = useState("");
   const [cancelApprovalOrderId, setCancelApprovalOrderId] = useState("");
+  const [cancellationReviewOrder, setCancellationReviewOrder] = useState<any | null>(null);
+  const [cancellationRefundValue, setCancellationRefundValue] = useState("");
+  const [cancellationReviewNote, setCancellationReviewNote] = useState("");
+  const [cancellationReviewApprovalOpen, setCancellationReviewApprovalOpen] = useState(false);
+  const [resolvingCancellationOrderId, setResolvingCancellationOrderId] = useState("");
   const PER_PAGE = 20;
 
   const user = (() => {
@@ -494,6 +505,11 @@ export function OrdersScreen() {
   const handleAssignCourier = async (entregadorId: string) => {
     if (!selected) return;
 
+    if (hasPendingCancellationRequest(selected)) {
+      showSystemNotice("Analise a solicitação de cancelamento antes de atribuir uma entrega.");
+      return;
+    }
+
     if (!isOrderPaid(selected, selectedPayments)) {
       showSystemNotice("O pedido só pode avançar após a aprovação do pagamento.");
       return;
@@ -627,6 +643,11 @@ export function OrdersScreen() {
     const rawStatus = getBackendStatus(currentStatus);
     const idx = backendStatusFlow.indexOf(rawStatus);
 
+    if (hasPendingCancellationRequest(order)) {
+      showSystemNotice("Analise a solicitação de cancelamento antes de avançar o pedido.");
+      return;
+    }
+
     if (idx >= 0 && idx < backendStatusFlow.length - 1) {
       const nextStatus = backendStatusFlow[idx + 1];
 
@@ -724,6 +745,96 @@ export function OrdersScreen() {
     }
   };
 
+  const openCancellationReview = (order: any) => {
+    const request = getCancellationRequest(order);
+    if (!request || request.status !== "pendente") return;
+
+    setCancellationReviewOrder(order);
+    setCancellationRefundValue(String(Number(request.valor_pago || order.total || 0).toFixed(2)).replace(".", ","));
+    setCancellationReviewNote("");
+    setCancellationReviewApprovalOpen(false);
+  };
+
+  const closeCancellationReview = () => {
+    if (resolvingCancellationOrderId) return;
+    setCancellationReviewOrder(null);
+    setCancellationRefundValue("");
+    setCancellationReviewNote("");
+    setCancellationReviewApprovalOpen(false);
+  };
+
+  const applyCancellationResolution = (orderId: string, request: any, status?: string) => {
+    const patch = {
+      ...(status ? { status } : {}),
+      solicitacao_cancelamento: request,
+    };
+    setOrders((prev) => prev.map((order) => (order.id === orderId ? { ...order, ...patch } : order)));
+    setSelected((prev: any) => (prev?.id === orderId ? { ...prev, ...patch } : prev));
+  };
+
+  const rejectCancellationRequest = async () => {
+    if (!cancellationReviewOrder || !cancellationReviewNote.trim()) {
+      showSystemNotice("Informe a justificativa da recusa.");
+      return;
+    }
+
+    try {
+      setResolvingCancellationOrderId(cancellationReviewOrder.id);
+      const response = await api.patch(
+        `/pedidos/${cancellationReviewOrder.id}/solicitacao-cancelamento/recusar`,
+        { observacao: cancellationReviewNote.trim() },
+      );
+      applyCancellationResolution(cancellationReviewOrder.id, response.data.data || response.data);
+      closeCancellationReview();
+      await fetchOrders(1, true, { silent: true });
+    } catch (error) {
+      showSystemNotice(getApiErrorMessage(error, "Não foi possível recusar a solicitação."));
+    } finally {
+      setResolvingCancellationOrderId("");
+      setCancellationReviewOrder(null);
+    }
+  };
+
+  const requestCancellationApproval = () => {
+    const totalPaid = Number(getCancellationRequest(cancellationReviewOrder)?.valor_pago || 0);
+    const refundValue = parseCurrencyInput(cancellationRefundValue);
+
+    if (!Number.isFinite(refundValue) || refundValue < 0 || refundValue > totalPaid) {
+      showSystemNotice("Informe um reembolso entre R$ 0,00 e o total pago.");
+      return;
+    }
+    if (refundValue < totalPaid && !cancellationReviewNote.trim()) {
+      showSystemNotice("Informe a justificativa para a retenção de valores.");
+      return;
+    }
+
+    setCancellationReviewApprovalOpen(true);
+  };
+
+  const approveCancellationRequest = async (approval: MfaApproval) => {
+    if (!cancellationReviewOrder) return;
+
+    try {
+      setResolvingCancellationOrderId(cancellationReviewOrder.id);
+      const response = await api.patch(
+        `/pedidos/${cancellationReviewOrder.id}/solicitacao-cancelamento/aprovar`,
+        {
+          valor_reembolso: parseCurrencyInput(cancellationRefundValue),
+          observacao: cancellationReviewNote.trim() || null,
+          mfa_approval: approval,
+        },
+      );
+      applyCancellationResolution(cancellationReviewOrder.id, response.data.data || response.data, "cancelado");
+      setCancellationReviewApprovalOpen(false);
+      setCancellationReviewOrder(null);
+      await fetchOrders(1, true, { silent: true });
+    } catch (error) {
+      showSystemNotice(getApiErrorMessage(error, "Não foi possível aprovar a solicitação."));
+    } finally {
+      setResolvingCancellationOrderId("");
+    }
+  };
+
   const toggleArchivedOrder = async (order: any) => {
     const shouldRestore = Boolean(order.arquivado);
 
@@ -795,10 +906,10 @@ export function OrdersScreen() {
           (order) => getOrderNeighborhood(order) === bairroFilter,
         );
   const listDeliveryOrders = allDeliveryOrders.filter(
-    (order) => !assignedOrderIds.has(order.id),
+    (order) => !assignedOrderIds.has(order.id) && !hasPendingCancellationRequest(order),
   );
   const deliveryOrders = bairroFilteredDeliveryOrders.filter(
-    (order) => !assignedOrderIds.has(order.id),
+    (order) => !assignedOrderIds.has(order.id) && !hasPendingCancellationRequest(order),
   );
   const selectableDeliveryOrders =
     viewMode === "bairros" ? deliveryOrders : listDeliveryOrders;
@@ -836,8 +947,10 @@ export function OrdersScreen() {
   const selectedStatusUpdating = updatingStatusOrderId === selected?.id;
   const selectedCancelling = cancellingOrderId === selected?.id;
   const selectedArchiving = archivingOrderId === selected?.id;
+  const selectedCancellationPending = hasPendingCancellationRequest(selected);
+  const selectedCancellationResolving = resolvingCancellationOrderId === selected?.id;
   const selectedOrderUpdating =
-    selectedStatusUpdating || selectedCancelling || selectedArchiving;
+    selectedStatusUpdating || selectedCancelling || selectedArchiving || selectedCancellationResolving;
   const selectedPaymentStatusClass = ["Aprovado", "Confirmado"].includes(
     selectedPaymentStatus,
   )
@@ -874,11 +987,19 @@ export function OrdersScreen() {
         ]
       : [
           {
+            key: "cancelamentos",
+            title: "Cancelamentos para análise",
+            description: "Pedidos bloqueados até a decisão da loja",
+            orders: filtered.filter(hasPendingCancellationRequest),
+          },
+          {
             key: "andamento",
             title: "Em andamento",
             description: "Pedidos que ainda exigem ação",
             orders: filtered.filter(
-              (order) => !["entregue", "nao_entregue", "cancelado"].includes(order.status),
+              (order) =>
+                !hasPendingCancellationRequest(order)
+                && !["entregue", "nao_entregue", "cancelado"].includes(order.status),
             ),
           },
           {
@@ -958,6 +1079,7 @@ export function OrdersScreen() {
       (order) =>
         isOrderPaid(order) &&
         !assignedOrderIds.has(order.id) &&
+        !hasPendingCancellationRequest(order) &&
         !["entregue", "nao_entregue", "cancelado", "Entregue", "Não entregue", "Cancelado"].includes(
           order.status,
         ),
@@ -1358,6 +1480,7 @@ export function OrdersScreen() {
                 isEntrega &&
                 isOrderPaid(order) &&
                 !assignedOrderIds.has(order.id) &&
+                !hasPendingCancellationRequest(order) &&
                 !["entregue", "nao_entregue", "cancelado"].includes(order.status);
               const isSelectedForDelivery = selectedOrderIds.includes(order.id);
               const assignedDelivery = deliveryByOrderId.get(order.id);
@@ -1424,6 +1547,11 @@ export function OrdersScreen() {
                           {!isOrderPaid(order) && (
                             <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">
                               Pagamento pendente
+                            </span>
+                          )}
+                          {hasPendingCancellationRequest(order) && (
+                            <span className="text-[11px] px-2 py-0.5 rounded-full bg-red-50 text-red-700">
+                              Cancelamento para análise
                             </span>
                           )}
                           {isEntrega && assignedDelivery?.entregador_id && (
@@ -1555,6 +1683,7 @@ export function OrdersScreen() {
               const activeOrders = group.orders.filter(
                 (o) =>
                   isOrderPaid(o) &&
+                  !hasPendingCancellationRequest(o) &&
                   !["entregue", "nao_entregue", "cancelado", "Entregue", "Não entregue", "Cancelado"].includes(
                     o.status,
                   ),
@@ -1680,6 +1809,7 @@ export function OrdersScreen() {
                         const canSelectForDelivery =
                           isOrderPaid(order) &&
                           !assignedOrderIds.has(order.id) &&
+                          !hasPendingCancellationRequest(order) &&
                           !["entregue", "nao_entregue", "cancelado"].includes(order.status);
                         const isSelectedForDelivery = selectedOrderIds.includes(
                           order.id,
@@ -1752,6 +1882,11 @@ export function OrdersScreen() {
                                 {!isOrderPaid(order) && (
                                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">
                                     Pagamento pendente
+                                  </span>
+                                )}
+                                {hasPendingCancellationRequest(order) && (
+                                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-50 text-red-700">
+                                    Cancelamento para análise
                                   </span>
                                 )}
                               </div>
@@ -2178,6 +2313,31 @@ export function OrdersScreen() {
             </div>
 
             {/* Delivery Person Assignment */}
+            {selectedCancellationPending && (
+              <div className="rounded-xl border border-red-200 bg-red-50 p-4">
+                <h4 className="flex items-center gap-2 text-sm font-semibold text-red-800">
+                  <AlertTriangle className="h-4 w-4" />
+                  Cancelamento aguardando análise
+                </h4>
+                <p className="mt-1 text-sm text-red-700">
+                  O pedido está bloqueado para avanço e atribuição de entrega até a decisão da loja.
+                </p>
+                {getCancellationRequest(selected)?.erro_estorno && (
+                  <p className="mt-2 text-xs text-red-700">
+                    Falha no estorno automático: {getCancellationRequest(selected).erro_estorno}
+                  </p>
+                )}
+                <button
+                  type="button"
+                  onClick={() => openCancellationReview(selected)}
+                  className="mt-3 rounded-lg bg-red-700 px-4 py-2 text-sm font-semibold text-white hover:bg-red-800"
+                >
+                  Analisar cancelamento
+                </button>
+              </div>
+            )}
+
+            {/* Delivery Person Assignment */}
             {(selected.tipo_pedido || selected.type || "").toLowerCase() ===
               "entrega" && (
               <div className="bg-white border border-gray-200 rounded-xl p-4">
@@ -2234,6 +2394,7 @@ export function OrdersScreen() {
                 getStatusLabel(selected.status) !== "Cancelado" &&
                 getStatusLabel(selected.status) !== "Não entregue" &&
                 selectedIsPaid &&
+                !selectedCancellationPending &&
                 !adminCannotDispatchDelivery &&
                 !adminCannotConfirmDelivery && (
                   <button
@@ -2324,7 +2485,8 @@ export function OrdersScreen() {
                 )}
               </button>
               {getStatusLabel(selected.status) !== "Cancelado" &&
-                getStatusLabel(selected.status) !== "Entregue" && (
+                getStatusLabel(selected.status) !== "Entregue" &&
+                !selectedCancellationPending && (
                   <button
                     onClick={() => setCancelApprovalOrderId(selected.id)}
                     disabled={selectedOrderUpdating}
@@ -2348,6 +2510,65 @@ export function OrdersScreen() {
           </div>
         </div>
       )}
+      {cancellationReviewOrder && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">Analisar cancelamento</h2>
+                <p className="mt-1 text-sm text-gray-500">
+                  Pedido {cancellationReviewOrder.numero_pedido || cancellationReviewOrder.id}
+                </p>
+              </div>
+              <button type="button" onClick={closeCancellationReview}>
+                <X className="h-5 w-5 text-gray-400" />
+              </button>
+            </div>
+
+            <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+              Total pago: R$ {Number(getCancellationRequest(cancellationReviewOrder)?.valor_pago || 0).toFixed(2).replace(".", ",")}
+            </div>
+
+            <label className="mt-4 block text-sm font-medium text-gray-700">Valor do reembolso</label>
+            <input
+              value={cancellationRefundValue}
+              onChange={(event) => setCancellationRefundValue(event.target.value)}
+              inputMode="decimal"
+              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              placeholder="0,00"
+            />
+
+            <label className="mt-4 block text-sm font-medium text-gray-700">
+              Observação
+            </label>
+            <textarea
+              value={cancellationReviewNote}
+              onChange={(event) => setCancellationReviewNote(event.target.value)}
+              className="mt-1 min-h-24 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              placeholder="Obrigatória para retenção de valores ou recusa"
+            />
+
+            <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => void rejectCancellationRequest()}
+                disabled={Boolean(resolvingCancellationOrderId)}
+                className="rounded-lg border border-red-200 px-4 py-2 text-sm font-semibold text-red-700 disabled:opacity-60"
+              >
+                Recusar solicitação
+              </button>
+              <button
+                type="button"
+                onClick={requestCancellationApproval}
+                disabled={Boolean(resolvingCancellationOrderId)}
+                className="rounded-lg bg-blue-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                Aprovar com MFA
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <MfaApprovalModal
         open={Boolean(cancelApprovalOrderId)}
         title="Aprovar cancelamento"
@@ -2355,6 +2576,14 @@ export function OrdersScreen() {
         loading={Boolean(cancellingOrderId)}
         onClose={() => setCancelApprovalOrderId("")}
         onConfirm={(approval) => void cancelOrder(cancelApprovalOrderId, approval)}
+      />
+      <MfaApprovalModal
+        open={cancellationReviewApprovalOpen}
+        title="Aprovar solicitação de cancelamento"
+        description="Confirme o reembolso e o cancelamento do pedido com um administrador do mercado."
+        loading={Boolean(resolvingCancellationOrderId)}
+        onClose={() => setCancellationReviewApprovalOpen(false)}
+        onConfirm={(approval) => void approveCancellationRequest(approval)}
       />
     </div>
   );
