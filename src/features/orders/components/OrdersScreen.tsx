@@ -27,6 +27,7 @@ import {
   Loader2,
   RefreshCw,
   AlertTriangle,
+  RotateCcw,
 } from "lucide-react";
 import api from '@/shared/lib/api';
 import { formatBrasiliaTime } from '@/shared/lib/dateTime';
@@ -89,6 +90,9 @@ const getCancellationRequest = (order: any) => order?.solicitacao_cancelamento |
 const hasPendingCancellationRequest = (order: any) =>
   getCancellationRequest(order)?.status === "pendente";
 const parseCurrencyInput = (value: string) => Number(value.replace(",", "."));
+const formatCurrency = (value: unknown) =>
+  `R$ ${Number(value || 0).toFixed(2).replace(".", ",")}`;
+const REFUND_ACTIVE_STATUSES = new Set(["pendente", "processando", "aprovado"]);
 
 export function OrdersScreen() {
   const [searchParams] = useSearchParams();
@@ -102,6 +106,14 @@ export function OrdersScreen() {
   const [selectedItems, setSelectedItems] = useState<any[]>([]);
   const [selectedItemsLoading, setSelectedItemsLoading] = useState(false);
   const [selectedPayments, setSelectedPayments] = useState<any[]>([]);
+  const [selectedRefunds, setSelectedRefunds] = useState<any[]>([]);
+  const [refundModalOpen, setRefundModalOpen] = useState(false);
+  const [refundMode, setRefundMode] = useState<"produto_em_falta" | "outro_motivo">("produto_em_falta");
+  const [refundMissingQuantities, setRefundMissingQuantities] = useState<Record<string, string>>({});
+  const [refundReason, setRefundReason] = useState("");
+  const [refundAmount, setRefundAmount] = useState("");
+  const [refundApprovalOpen, setRefundApprovalOpen] = useState(false);
+  const [refundSubmitting, setRefundSubmitting] = useState(false);
   const [checklistOrder, setChecklistOrder] = useState<any | null>(null);
   const [checklistItems, setChecklistItems] = useState<any[]>([]);
   const [checklistLoading, setChecklistLoading] = useState(false);
@@ -386,18 +398,44 @@ export function OrdersScreen() {
   const fetchOrderPayments = async (orderId: string) => {
     try {
       const response = await api.get(`/pedidos/${orderId}/pagamentos`);
-      setSelectedPayments(getApiList(response.data));
+      const payments = getApiList(response.data);
+      setSelectedPayments(payments);
+      return payments;
     } catch (error) {
       console.error("Error fetching order payments:", error);
       try {
         const response = await api.get("/pagamentos", {
           params: { pedido_id: orderId },
         });
-        setSelectedPayments(getApiList(response.data));
+        const payments = getApiList(response.data);
+        setSelectedPayments(payments);
+        return payments;
       } catch (fallbackError) {
         console.error("Error fetching order payments fallback:", fallbackError);
         setSelectedPayments([]);
+        return [];
       }
+    }
+  };
+
+  const fetchOrderRefunds = async (payments: any[]) => {
+    const paymentIds = payments.map((payment) => payment?.id).filter(Boolean);
+    if (paymentIds.length === 0) {
+      setSelectedRefunds([]);
+      return [];
+    }
+
+    try {
+      const responses = await Promise.all(
+        paymentIds.map((paymentId) => api.get(`/pagamentos/${paymentId}/estornos`)),
+      );
+      const refunds = responses.flatMap((response) => getApiList(response.data));
+      setSelectedRefunds(refunds);
+      return refunds;
+    } catch (error) {
+      console.error("Error fetching order refunds:", error);
+      setSelectedRefunds([]);
+      return [];
     }
   };
 
@@ -427,9 +465,10 @@ export function OrdersScreen() {
     setSelected(order);
     setSelectedItems([]);
     setSelectedPayments([]);
+    setSelectedRefunds([]);
     setCurrentDelivery(null);
     fetchOrderItems(order.id);
-    fetchOrderPayments(order.id);
+    fetchOrderPayments(order.id).then((payments) => fetchOrderRefunds(payments));
     if ((order.tipo_pedido || order.type || "").toLowerCase() === "entrega") {
       fetchOrderDelivery(order.id);
     }
@@ -835,6 +874,97 @@ export function OrdersScreen() {
     }
   };
 
+  const openRefundModal = () => {
+    if (!selectedCanRefund) {
+      showSystemNotice("Este pedido não possui saldo disponível para reembolso.");
+      return;
+    }
+
+    setRefundMode("produto_em_falta");
+    setRefundMissingQuantities({});
+    setRefundReason("");
+    setRefundAmount(selectedRefundableAmount.toFixed(2).replace(".", ","));
+    setRefundApprovalOpen(false);
+    setRefundModalOpen(true);
+  };
+
+  const closeRefundModal = () => {
+    if (refundSubmitting) return;
+    setRefundModalOpen(false);
+    setRefundApprovalOpen(false);
+  };
+
+  const requestRefundApproval = () => {
+    if (!selectedCanRefund) {
+      showSystemNotice("Este pedido não possui saldo disponível para reembolso.");
+      return;
+    }
+
+    if (!Number.isFinite(refundPreviewAmount) || refundPreviewAmount <= 0) {
+      showSystemNotice("Informe um valor de reembolso maior que zero.");
+      return;
+    }
+
+    if (refundPreviewAmount > selectedRefundableAmount) {
+      showSystemNotice("O reembolso excede o saldo disponível do pagamento.");
+      return;
+    }
+
+    if (refundMode === "produto_em_falta") {
+      const hasMissingItem = Object.values(refundMissingQuantities).some((value) => Number(value) > 0);
+      if (!hasMissingItem) {
+        showSystemNotice("Selecione ao menos um produto em falta.");
+        return;
+      }
+    }
+
+    if (refundMode === "outro_motivo" && !refundReason.trim()) {
+      showSystemNotice("Informe o motivo do reembolso.");
+      return;
+    }
+
+    setRefundApprovalOpen(true);
+  };
+
+  const submitRefund = async (approval: MfaApproval) => {
+    if (!selected) return;
+
+    const payload =
+      refundMode === "produto_em_falta"
+        ? {
+            tipo: refundMode,
+            motivo: refundReason.trim() || undefined,
+            itens: selectedItems
+              .map((item, index) => ({
+                item_pedido_id: item.id,
+                quantidade_faltante: Number(refundMissingQuantities[getOrderItemChecklistId(item, index)] || 0),
+              }))
+              .filter((item) => item.item_pedido_id && item.quantidade_faltante > 0),
+            mfa_approval: approval,
+          }
+        : {
+            tipo: refundMode,
+            valor: parseCurrencyInput(refundAmount),
+            motivo: refundReason.trim(),
+            mfa_approval: approval,
+          };
+
+    try {
+      setRefundSubmitting(true);
+      await api.post(`/pedidos/${selected.id}/reembolso`, payload);
+      const payments = await fetchOrderPayments(selected.id);
+      await fetchOrderRefunds(payments);
+      await fetchOrders(1, true, { silent: true });
+      setRefundApprovalOpen(false);
+      setRefundModalOpen(false);
+      showSystemNotice("Reembolso solicitado com sucesso.");
+    } catch (error) {
+      showSystemNotice(getApiErrorMessage(error, "Não foi possível solicitar o reembolso."));
+    } finally {
+      setRefundSubmitting(false);
+    }
+  };
+
   const toggleArchivedOrder = async (order: any) => {
     const shouldRestore = Boolean(order.arquivado);
 
@@ -939,6 +1069,25 @@ export function OrdersScreen() {
         : `${newOrdersCount} novos pedidos`;
   const selectedPayment = getPreferredOrderPayment(selected, selectedPayments);
   const selectedIsPaid = isOrderPaid(selected, selectedPayments);
+  const selectedRefundedAmount = selectedRefunds
+    .filter((refund) => REFUND_ACTIVE_STATUSES.has(String(refund.status || "").toLowerCase()))
+    .reduce((sum, refund) => sum + Number(refund.valor || 0), 0);
+  const selectedRefundableAmount = Math.max(
+    0,
+    Number(selectedPayment?.valor || selected?.valor_total || selected?.total || 0) - selectedRefundedAmount,
+  );
+  const missingItemsRefundAmount = selectedItems.reduce((sum, item, index) => {
+    const key = getOrderItemChecklistId(item, index);
+    const quantity = Number(refundMissingQuantities[key] || 0);
+    if (!Number.isFinite(quantity) || quantity <= 0) return sum;
+    const itemQuantity = getOrderItemQuantity(item);
+    const unitPrice = itemQuantity > 0 ? getOrderItemTotal(item) / itemQuantity : 0;
+    return sum + unitPrice * Math.min(quantity, itemQuantity);
+  }, 0);
+  const refundPreviewAmount =
+    refundMode === "produto_em_falta"
+      ? missingItemsRefundAmount
+      : parseCurrencyInput(refundAmount || "0");
   const selectedForPrint = selected
     ? { ...selected, pagamento: selectedPayment }
     : selected;
@@ -948,6 +1097,11 @@ export function OrdersScreen() {
   const selectedCancelling = cancellingOrderId === selected?.id;
   const selectedArchiving = archivingOrderId === selected?.id;
   const selectedCancellationPending = hasPendingCancellationRequest(selected);
+  const selectedCanRefund =
+    Boolean(selected?.id) &&
+    selectedIsPaid &&
+    !selectedCancellationPending &&
+    selectedRefundableAmount > 0;
   const selectedCancellationResolving = resolvingCancellationOrderId === selected?.id;
   const selectedOrderUpdating =
     selectedStatusUpdating || selectedCancelling || selectedArchiving || selectedCancellationResolving;
@@ -1992,6 +2146,152 @@ export function OrdersScreen() {
         />
       )}
 
+      {refundModalOpen && selected && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4">
+          <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl">
+            <div className="flex items-start justify-between gap-4 border-b border-gray-100 px-5 py-4">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">Reembolsar pedido</h2>
+                <p className="mt-1 text-sm text-gray-500">
+                  Pedido {selected.numero_pedido || selected.id} · saldo {formatCurrency(selectedRefundableAmount)}
+                </p>
+              </div>
+              <button type="button" onClick={closeRefundModal}>
+                <X className="h-5 w-5 text-gray-400" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5">
+              <div className="grid grid-cols-2 gap-2 rounded-xl bg-gray-100 p-1">
+                {[
+                  { value: "produto_em_falta", label: "Produto em falta" },
+                  { value: "outro_motivo", label: "Outro motivo" },
+                ].map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setRefundMode(option.value as typeof refundMode)}
+                    className={`rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${
+                      refundMode === option.value
+                        ? "bg-white text-blue-950 shadow-sm"
+                        : "text-gray-500 hover:text-gray-800"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+
+              {refundMode === "produto_em_falta" ? (
+                <div className="mt-5 space-y-3">
+                  {selectedItemsLoading && <p className="text-sm text-gray-500">Carregando produtos...</p>}
+                  {!selectedItemsLoading && selectedItems.length === 0 && (
+                    <p className="rounded-lg bg-gray-50 px-3 py-3 text-sm text-gray-500">
+                      Nenhum produto encontrado para este pedido.
+                    </p>
+                  )}
+                  {!selectedItemsLoading && selectedItems.map((item, index) => {
+                    const key = getOrderItemChecklistId(item, index);
+                    const quantity = getOrderItemQuantity(item);
+                    const unitPrice = quantity > 0 ? getOrderItemTotal(item) / quantity : 0;
+
+                    return (
+                      <div key={key} className="rounded-xl border border-gray-200 p-3">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-gray-800">
+                              {quantity}x {getOrderItemName(item)}
+                            </p>
+                            <p className="mt-0.5 text-xs text-gray-500">
+                              Unitário {formatCurrency(unitPrice)} · total {formatCurrency(getOrderItemTotal(item))}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <label className="text-xs font-medium text-gray-500" htmlFor={`refund-item-${key}`}>
+                              Faltou
+                            </label>
+                            <input
+                              id={`refund-item-${key}`}
+                              type="number"
+                              min="0"
+                              max={quantity}
+                              step="1"
+                              value={refundMissingQuantities[key] || ""}
+                              onChange={(event) => setRefundMissingQuantities((prev) => ({
+                                ...prev,
+                                [key]: event.target.value,
+                              }))}
+                              className="w-20 rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  <label className="block text-sm font-medium text-gray-700">
+                    Observação opcional
+                    <textarea
+                      value={refundReason}
+                      onChange={(event) => setRefundReason(event.target.value)}
+                      className="mt-1 min-h-20 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                      placeholder="Ex.: cliente aceitou seguir com o restante do pedido"
+                    />
+                  </label>
+                </div>
+              ) : (
+                <div className="mt-5 space-y-4">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Valor do reembolso
+                    <input
+                      value={refundAmount}
+                      onChange={(event) => setRefundAmount(event.target.value)}
+                      inputMode="decimal"
+                      className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                      placeholder="0,00"
+                    />
+                  </label>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Motivo
+                    <textarea
+                      value={refundReason}
+                      onChange={(event) => setRefundReason(event.target.value)}
+                      className="mt-1 min-h-24 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                      placeholder="Descreva o motivo para o cliente"
+                    />
+                  </label>
+                </div>
+              )}
+            </div>
+
+            <div className="border-t border-gray-100 bg-gray-50 px-5 py-4">
+              <div className="mb-3 flex items-center justify-between text-sm">
+                <span className="font-medium text-gray-600">Total do reembolso</span>
+                <span className="text-lg font-bold text-blue-950">{formatCurrency(refundPreviewAmount)}</span>
+              </div>
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={closeRefundModal}
+                  disabled={refundSubmitting}
+                  className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 disabled:opacity-60"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={requestRefundApproval}
+                  disabled={refundSubmitting}
+                  className="rounded-lg bg-blue-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                >
+                  Aprovar com MFA
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── DETAIL PANEL ───────────────────────────────── */}
       {selected && (
         <div className="flex-1 lg:border-l border-gray-200 overflow-y-auto bg-white">
@@ -2310,6 +2610,43 @@ export function OrdersScreen() {
                   Pagamento pendente
                 </div>
               )}
+              {selectedRefunds.length > 0 && (
+                <div className="mt-3 border-t border-gray-100 pt-3">
+                  <div className="mb-2 flex items-center justify-between text-xs font-semibold text-gray-500">
+                    <span>Reembolsos</span>
+                    <span>{formatCurrency(selectedRefundedAmount)}</span>
+                  </div>
+                  <div className="space-y-2">
+                    {selectedRefunds.map((refund) => {
+                      const metadata = refund.metadata || {};
+                      const missingItems = Array.isArray(metadata.itens_faltantes)
+                        ? metadata.itens_faltantes
+                        : [];
+                      return (
+                        <div key={refund.id} className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2">
+                          <div className="flex items-center justify-between gap-2 text-xs">
+                            <span className="font-semibold text-blue-900">{formatCurrency(refund.valor)}</span>
+                            <span className="capitalize text-blue-700">{String(refund.status || "").replace(/_/g, " ")}</span>
+                          </div>
+                          <p className="mt-1 text-xs text-blue-800">
+                            {refund.motivo || (metadata.tipo === "produto_em_falta" ? "Produto em falta" : "Reembolso")}
+                          </p>
+                          {missingItems.length > 0 && (
+                            <p className="mt-1 text-[11px] text-blue-700">
+                              {missingItems
+                                .map((item: any) => `${item.quantidade_faltante}x ${item.nome_produto}`)
+                                .join(", ")}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="mt-2 text-[11px] text-gray-500">
+                    Saldo disponível: {formatCurrency(selectedRefundableAmount)}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Delivery Person Assignment */}
@@ -2463,6 +2800,13 @@ export function OrdersScreen() {
                 <Package className="w-4 h-4" /> Ver produtos
               </button>
               <button
+                onClick={openRefundModal}
+                disabled={!selectedCanRefund || selectedOrderUpdating}
+                className="w-full py-2.5 rounded-lg text-blue-700 text-sm font-medium border border-blue-200 hover:bg-blue-50 transition-colors disabled:cursor-not-allowed disabled:opacity-60 flex items-center justify-center gap-2"
+              >
+                <RotateCcw className="w-4 h-4" /> Reembolsar
+              </button>
+              <button
                 onClick={() => toggleArchivedOrder(selected)}
                 disabled={selectedOrderUpdating}
                 aria-busy={selectedArchiving}
@@ -2584,6 +2928,14 @@ export function OrdersScreen() {
         loading={Boolean(resolvingCancellationOrderId)}
         onClose={() => setCancellationReviewApprovalOpen(false)}
         onConfirm={(approval) => void approveCancellationRequest(approval)}
+      />
+      <MfaApprovalModal
+        open={refundApprovalOpen}
+        title="Aprovar reembolso"
+        description="Confirme o reembolso do pedido com um administrador do mercado."
+        loading={refundSubmitting}
+        onClose={() => setRefundApprovalOpen(false)}
+        onConfirm={(approval) => void submitRefund(approval)}
       />
     </div>
   );
