@@ -7,7 +7,7 @@ import {
 import { showSystemNotice } from '@/shared/components/SystemNoticeModal';
 import { useProducts } from '../hooks/useProducts';
 import { productsService } from '../services/productsService';
-import { parseMoney, parseStock } from '../utils/formatProductData';
+import { parseMoney, parseQuantity, parseStock } from '../utils/formatProductData';
 
 const PRIMARY = '#122a4c';
 
@@ -232,6 +232,7 @@ function GlobalProductSelector({ existingProductIds, onSelect, onClose }: { exis
 }
 
 function ProductForm({ product, isNew, categories, onClose, onSuccess }: { product: any; isNew: boolean; categories: any[]; onClose: () => void; onSuccess: () => void }) {
+  const initialSaleType = product?.tipo_venda || (product?.vendavel_por_peso ? 'peso' : 'unidade');
   const [form, setForm] = useState({
     preco: product?.preco?.toString() ?? '',
     preco_promocional: product?.preco_promocional?.toString() ?? '',
@@ -241,6 +242,9 @@ function ProductForm({ product, isNew, categories, onClose, onSuccess }: { produ
     consumo_imediato: product?.consumo_imediato ?? false,
     codigo_interno: product?.codigo_interno ?? '',
     categoria_id: product?.categoria_id ?? product?.produto_categoria_id ?? '',
+    tipo_venda: initialSaleType as 'unidade' | 'peso',
+    quantidade_minima_compra: product?.quantidade_minima_compra?.toString() ?? (initialSaleType === 'peso' ? '0,100' : '1'),
+    incremento_quantidade: product?.incremento_quantidade?.toString() ?? (initialSaleType === 'peso' ? '0,100' : '1'),
   });
   const initialPath = getCategoryPath(categories, product?.categoria_id ?? product?.categoria_final_id ?? product?.produto_categoria_id ?? '');
   const [departmentId, setDepartmentId] = useState(initialPath[0]?.id ?? '');
@@ -263,6 +267,16 @@ function ProductForm({ product, isNew, categories, onClose, onSuccess }: { produ
     promotionalPrice !== null &&
     promotionalPrice > 0 &&
     promotionalPrice < regularPrice;
+  const isWeightSale = form.tipo_venda === 'peso';
+
+  const setSaleType = (saleType: 'unidade' | 'peso') => {
+    setForm(prev => ({
+      ...prev,
+      tipo_venda: saleType,
+      quantidade_minima_compra: saleType === 'peso' ? '0,100' : '1',
+      incremento_quantidade: saleType === 'peso' ? '0,100' : '1',
+    }));
+  };
 
   useEffect(() => {
     const fetchVariations = async () => {
@@ -338,7 +352,10 @@ function ProductForm({ product, isNew, categories, onClose, onSuccess }: { produ
         ativo_na_loja: form.ativo,
         destaque: form.destaque,
         consumo_imediato: form.consumo_imediato,
-        codigo_interno: form.codigo_interno
+        codigo_interno: form.codigo_interno,
+        tipo_venda: form.tipo_venda,
+        quantidade_minima_compra: parseQuantity(form.quantidade_minima_compra) ?? (isWeightSale ? 0.1 : 1),
+        incremento_quantidade: parseQuantity(form.incremento_quantidade) ?? (isWeightSale ? 0.1 : 1),
       };
 
       let produtoLojaId = product.id;
@@ -402,6 +419,12 @@ function ProductForm({ product, isNew, categories, onClose, onSuccess }: { produ
                   <span className="font-medium">{product.marca || 'Sem marca'}</span>
                   <span className="mx-1.5 opacity-30">•</span>
                   <span>{product.unidade_medida || 'un'}</span>
+                  {(product.vendavel_por_peso || isWeightSale) && (
+                    <>
+                      <span className="mx-1.5 opacity-30">•</span>
+                      <span>vendido por peso</span>
+                    </>
+                  )}
                </div>
                <div className="text-[10px] text-gray-400 mt-2 line-clamp-2 italic">
                   {product.descricao || 'Sem descrição cadastrada'}
@@ -562,7 +585,7 @@ function ProductForm({ product, isNew, categories, onClose, onSuccess }: { produ
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm text-gray-600 mb-1">Preço normal (R$) *</label>
+                  <label className="block text-sm text-gray-600 mb-1">{isWeightSale ? 'Preço por kg (R$) *' : 'Preço normal (R$) *'}</label>
                   <input
                     value={form.preco}
                     onChange={e => setForm(p => ({ ...p, preco: e.target.value }))}
@@ -571,7 +594,7 @@ function ProductForm({ product, isNew, categories, onClose, onSuccess }: { produ
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-600 mb-1">Preço promocional (R$)</label>
+                  <label className="block text-sm text-gray-600 mb-1">{isWeightSale ? 'Promoção por kg (R$)' : 'Preço promocional (R$)'}</label>
                   <input
                     value={form.preco_promocional}
                     onChange={e => setForm(p => ({ ...p, preco_promocional: e.target.value }))}
@@ -581,7 +604,7 @@ function ProductForm({ product, isNew, categories, onClose, onSuccess }: { produ
                 </div>
               </div>
               <div>
-                <label className="block text-sm text-gray-600 mb-1">Estoque</label>
+                <label className="block text-sm text-gray-600 mb-1">Estoque{isWeightSale ? ' (kg)' : ''}</label>
                 <input
                   value={form.estoque}
                   onChange={e => setForm(p => ({ ...p, estoque: e.target.value }))}
@@ -589,6 +612,54 @@ function ProductForm({ product, isNew, categories, onClose, onSuccess }: { produ
                   placeholder="0"
                 />
               </div>
+            </div>
+          </div>
+
+          {/* Section: Sale Mode */}
+          <div>
+            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Modo de venda</div>
+            <div className="rounded-xl border border-gray-200 p-3">
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSaleType('unidade')}
+                  className="rounded-lg px-3 py-2 text-xs font-semibold transition-colors"
+                  style={form.tipo_venda === 'unidade' ? { backgroundColor: PRIMARY, color: 'white' } : { backgroundColor: '#f3f4f6', color: '#4b5563' }}
+                >
+                  Unidade
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSaleType('peso')}
+                  className="rounded-lg px-3 py-2 text-xs font-semibold transition-colors"
+                  style={form.tipo_venda === 'peso' ? { backgroundColor: PRIMARY, color: 'white' } : { backgroundColor: '#f3f4f6', color: '#4b5563' }}
+                >
+                  Peso (kg)
+                </button>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">{isWeightSale ? 'Peso mínimo (kg)' : 'Quantidade mínima'}</label>
+                  <input
+                    value={form.quantidade_minima_compra}
+                    onChange={e => setForm(p => ({ ...p, quantidade_minima_compra: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none"
+                    placeholder={isWeightSale ? '0,100' : '1'}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">{isWeightSale ? 'Incremento (kg)' : 'Incremento'}</label>
+                  <input
+                    value={form.incremento_quantidade}
+                    onChange={e => setForm(p => ({ ...p, incremento_quantidade: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none"
+                    placeholder={isWeightSale ? '0,100' : '1'}
+                  />
+                </div>
+              </div>
+              <p className="mt-2 text-[10px] text-gray-400">
+                {isWeightSale ? 'O preço será cobrado por kg. Exemplo: 0,500 kg usa metade do preço por kg.' : 'Produtos por unidade exigem quantidades inteiras.'}
+              </p>
             </div>
           </div>
 
@@ -910,6 +981,9 @@ export function ProductsScreen() {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="font-semibold text-gray-800">R$ {parseFloat(product.preco || 0).toFixed(2).replace('.', ',')}</div>
+                      {product.tipo_venda === 'peso' && (
+                        <div className="text-[11px] text-gray-400">por kg</div>
+                      )}
                       {product.preco_promocional && (
                         <div className="text-xs text-green-600 font-medium">R$ {parseFloat(product.preco_promocional).toFixed(2).replace('.', ',')}</div>
                       )}
@@ -919,6 +993,7 @@ export function ProductsScreen() {
                         {stock === 0 && <AlertCircle className="w-3.5 h-3.5 text-red-500" />}
                         <span className={`text-sm font-medium ${stock === 0 ? 'text-red-500' : stock < 20 ? 'text-amber-500' : 'text-gray-700'}`}>
                           {stock}
+                          {product.tipo_venda === 'peso' ? ' kg' : ''}
                         </span>
                       </div>
                     </td>

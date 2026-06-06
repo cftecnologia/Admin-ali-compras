@@ -6,10 +6,10 @@ import { productsService } from "../services/productsService";
 const PRIMARY = "#122a4c";
 
 const templateCsv = [
-  "slug,preco,preco_promocional,sku",
-  "arroz-branco-1kg,7.99,,ARROZ-001",
-  "feijao-carioca-1kg,8.49,7.99,FEIJAO-001",
-  "leite-integral-1l,5.69,,",
+  "slug,preco,preco_promocional,sku,tipo_venda,quantidade_minima_compra,incremento_quantidade",
+  "arroz-branco-1kg,7.99,,ARROZ-001,unidade,1,1",
+  "carne-bovina-kg,39.90,,CARNE-001,peso,0.100,0.100",
+  "leite-integral-1l,5.69,,,,",
 ].join("\n");
 
 type ImportResult = {
@@ -78,7 +78,7 @@ export function ProductCsvImportScreen() {
           <div>
             <h1 className="text-xl font-semibold text-gray-900">Importar produtos por CSV</h1>
             <p className="mt-1 text-sm text-gray-500">
-              Vincule produtos globais à loja usando apenas slug e preço. Colunas extras serão ignoradas.
+              Vincule produtos globais à loja usando slug e preço. Produtos por peso aceitam colunas opcionais de mínimo e incremento.
             </p>
           </div>
           <button
@@ -119,7 +119,7 @@ export function ProductCsvImportScreen() {
                   {selectedFile ? selectedFile.name : "Selecionar CSV"}
                 </div>
                 <div className="mt-1 text-xs text-gray-500">
-                  Obrigatórias: slug e preco. Opcionais: preco_promocional e sku.
+                  Obrigatórias: slug e preco. Opcionais: preco_promocional, sku, tipo_venda, quantidade_minima_compra e incremento_quantidade.
                 </div>
                 <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
                   <button
@@ -180,6 +180,7 @@ export function ProductCsvImportScreen() {
                 ["Consumo imediato", "Não"],
                 ["Categoria", "Produto global"],
                 ["Estoque", "0"],
+                ["Peso", "0,100 kg quando tipo_venda=peso"],
               ].map(([label, value]) => (
                 <div key={label} className="flex items-center justify-between border-b border-gray-100 pb-2 last:border-0 last:pb-0">
                   <span className="text-gray-500">{label}</span>

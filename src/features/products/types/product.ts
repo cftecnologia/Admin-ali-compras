@@ -16,4 +16,7 @@ export type ProductStorePayload = {
   destaque: boolean;
   consumo_imediato: boolean;
   codigo_interno: string;
+  tipo_venda: "unidade" | "peso";
+  quantidade_minima_compra: number;
+  incremento_quantidade: number;
 };
