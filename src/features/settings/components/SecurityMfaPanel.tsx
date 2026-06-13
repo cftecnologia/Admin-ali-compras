@@ -123,8 +123,8 @@ export function SecurityMfaPanel() {
             },
             {
               key: "refund_required" as const,
-              title: "Exigir 2FA para reembolsos",
-              description: "Solicita aprovação TOTP antes de qualquer reembolso da loja.",
+              title: "Exigir 2FA para reembolsos e cancelamentos",
+              description: "Solicita aprovação TOTP antes de reembolsar ou cancelar pedidos da loja.",
               enabled: status?.refund_required || false,
             },
           ].map((preference) => (

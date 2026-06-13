@@ -813,10 +813,13 @@ export function OrdersScreen() {
     }
   };
 
-  const cancelOrder = async (id: string, approval: MfaApproval) => {
+  const cancelOrder = async (id: string, approval?: MfaApproval) => {
     try {
       setCancellingOrderId(id);
-      await api.patch(`/pedidos/${id}/cancelar`, { mfa_approval: approval });
+      await api.patch(
+        `/pedidos/${id}/cancelar`,
+        approval ? { mfa_approval: approval } : {},
+      );
       setOrders((prev) =>
         prev.map((o) => (o.id === id ? { ...o, status: "cancelado" } : o)),
       );
@@ -831,6 +834,29 @@ export function OrdersScreen() {
     } finally {
       setCancellingOrderId((currentId) => (currentId === id ? "" : currentId));
       setCancelApprovalOrderId("");
+    }
+  };
+
+  const requestOrderCancellation = async (id: string) => {
+    try {
+      const mfa = await authService.getMfaStatus();
+      if (mfa.refund_required) {
+        setCancelApprovalOrderId(id);
+        return;
+      }
+
+      if (!window.confirm("Tem certeza de que deseja cancelar este pedido?")) {
+        return;
+      }
+
+      await cancelOrder(id);
+    } catch (error) {
+      showSystemNotice(
+        getApiErrorMessage(
+          error,
+          "Não foi possível verificar a preferência de segurança.",
+        ),
+      );
     }
   };
 
@@ -925,7 +951,7 @@ export function OrdersScreen() {
 
     try {
       const mfa = await authService.getMfaStatus();
-      if (refundValue > 0 && mfa.refund_required) {
+      if (mfa.refund_required) {
         setCancellationReviewApprovalOpen(true);
         return;
       }
@@ -3097,7 +3123,9 @@ export function OrdersScreen() {
                 getStatusLabel(selected.status) !== "Entregue" &&
                 !selectedCancellationPending && (
                   <button
-                    onClick={() => setCancelApprovalOrderId(selected.id)}
+                    onClick={() =>
+                      void requestOrderCancellation(selected.id)
+                    }
                     disabled={selectedOrderUpdating}
                     aria-busy={selectedCancelling}
                     className="w-full py-2.5 rounded-lg text-red-600 text-sm font-medium border border-red-200 hover:bg-red-50 transition-colors disabled:cursor-wait disabled:opacity-70 flex items-center justify-center gap-2"
