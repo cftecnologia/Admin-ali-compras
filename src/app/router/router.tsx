@@ -22,6 +22,7 @@ import { SettingsPage } from "@/pages/Settings/SettingsPage";
 import { EntregadoresPage } from "@/pages/Entregadores/EntregadoresPage";
 import { MyDeliveriesPage } from "@/pages/Driver/MyDeliveriesPage";
 import { RouteDetailPage } from "@/pages/Driver/RouteDetailPage";
+import { SalaoPage } from "@/pages/Salao/SalaoPage";
 
 export const router = createBrowserRouter([
   {
@@ -50,6 +51,7 @@ export const router = createBrowserRouter([
           { path: "dashboard", Component: DashboardPage },
           { path: "orders", Component: OrdersPage },
           { path: "pedidos", Component: OrdersPage },
+          { path: "salao", Component: SalaoPage },
           { path: "products", Component: ProductsPage },
           { path: "produtos", Component: ProductsPage },
           { path: "products/import", Component: ProductCsvImportPage },
