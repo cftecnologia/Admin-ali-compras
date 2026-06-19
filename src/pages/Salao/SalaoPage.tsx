@@ -56,6 +56,9 @@ const unwrapList = (payload: any) => {
   return [];
 };
 
+const arrayOrEmpty = <T,>(value: unknown): T[] =>
+  Array.isArray(value) ? value : [];
+
 const formatMoney = (value: unknown) =>
   Number(value || 0).toFixed(2).replace(".", ",");
 
@@ -191,7 +194,9 @@ export function SalaoPage() {
   };
 
   const selectComanda = async (comanda: any) => {
-    setSelectedComanda(comanda);
+    // A list/table response is a summary and does not carry the participant list.
+    // Clear it before fetching the detail to avoid rendering summary-only fields as details.
+    setSelectedComanda(null);
     try {
       const detail = await salaoService.getComanda(comanda.id);
       setSelectedComanda(detail);
@@ -526,7 +531,7 @@ export function SalaoPage() {
                       <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
                         <div className="mb-2 text-sm font-semibold text-gray-900">Participantes</div>
                         <div className="space-y-1">
-                          {(selectedComanda.participantes || []).map((participant: any) => (
+                          {arrayOrEmpty<any>(selectedComanda.participantes).map((participant) => (
                             <div key={participant.id} className="flex items-center justify-between gap-2 text-xs">
                               <span className="truncate text-gray-700">{participant.nome_snapshot || participant.nome}</span>
                               {participant.status === "bloqueado" ? (
