@@ -314,7 +314,9 @@ export function SalaoPage() {
   };
 
   const printQrCode = async (mesa: any) => {
-    const printWindow = window.open("", "_blank", "noopener,noreferrer");
+    // Open synchronously from the click. Using `noopener` here makes some
+    // browsers return null even though the popup was accepted.
+    const printWindow = window.open("", "_blank");
     if (!printWindow) {
       showSystemNotice("Permita a abertura de janela para imprimir o QR Code.");
       return;
