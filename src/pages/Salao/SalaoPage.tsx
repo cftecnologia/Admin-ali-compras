@@ -82,6 +82,7 @@ export function SalaoPage() {
   const [creatingTable, setCreatingTable] = useState(false);
   const [newTableNumber, setNewTableNumber] = useState("");
   const [selectedComanda, setSelectedComanda] = useState<any | null>(null);
+  const [comandaModule, setComandaModule] = useState<"mesa" | "participantes" | "pedidos" | "adicionar">("mesa");
   const [productSearch, setProductSearch] = useState("");
   const [selectedProductId, setSelectedProductId] = useState("");
   const [selectedProductConfiguration, setSelectedProductConfiguration] = useState<any | null>(null);
@@ -237,6 +238,7 @@ export function SalaoPage() {
         quantidade_pessoas: 1,
       });
       setSelectedComanda(result);
+      setComandaModule("mesa");
       if (result?.pin) {
         setLatestPin(result.pin);
         showSystemNotice(`Comanda aberta. PIN da mesa: ${result.pin}`);
@@ -255,6 +257,7 @@ export function SalaoPage() {
     try {
       const result = await salaoService.approveOpeningRequest(request.id);
       setSelectedComanda(result.comanda);
+      setComandaModule("mesa");
       setLatestPin(result.comanda?.pin || "");
       setTab("comandas");
       showSystemNotice(`Solicitacao aprovada. PIN da mesa: ${result.comanda?.pin || "gerado"}`);
@@ -285,6 +288,7 @@ export function SalaoPage() {
     try {
       const detail = await salaoService.getComanda(comanda.id);
       setSelectedComanda(detail);
+      setComandaModule("mesa");
       requestAnimationFrame(() => comandaDetailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
     } catch (error: any) {
       showSystemNotice(error?.response?.data?.message || error?.message || "Nao foi possivel carregar a comanda.");
@@ -373,6 +377,7 @@ export function SalaoPage() {
         })),
       });
       setSelectedComanda(updated);
+      setComandaModule("pedidos");
       setSelectedProductId("");
       setSelectedProductConfiguration(null);
       setSelectedVariationId("");
@@ -702,9 +707,22 @@ export function SalaoPage() {
 
             <div ref={comandaDetailRef} className="scroll-mt-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
               {selectedComanda ? (
-                <div className="grid gap-5 lg:grid-cols-[1fr_340px]">
+                <>
+                  <div className="sticky top-0 z-30 -mx-4 mb-4 flex gap-1 overflow-x-auto border-b border-gray-100 bg-white px-4 py-2 shadow-sm scrollbar-hide">
+                    {[
+                      ["mesa", Armchair, "Mesa"],
+                      ["participantes", UserCheck, "Participantes"],
+                      ["pedidos", ClipboardList, "Pedidos"],
+                      ["adicionar", ShoppingCart, "Adicionar produto"],
+                    ].map(([id, Icon, label]) => (
+                      <button key={String(id)} onClick={() => setComandaModule(id as typeof comandaModule)} className={`inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold ${comandaModule === id ? "bg-[#122a4c] text-white shadow-sm" : "bg-slate-100 text-slate-600"}`}>
+                        <Icon className="h-4 w-4" /> {label}
+                      </button>
+                    ))}
+                  </div>
+                <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
                   <div className="order-2 lg:order-none">
-                    <div className="flex flex-col gap-2 border-b border-gray-100 pb-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className={comandaModule === "mesa" ? "flex flex-col gap-2 border-b border-gray-100 pb-4 sm:flex-row sm:items-center sm:justify-between" : "hidden"}>
                       <div>
                         <h2 className="font-semibold text-gray-900">{selectedComanda.numero_comanda}</h2>
                         <p className="inline-flex rounded-md bg-blue-100 px-2 py-1 text-sm font-bold text-blue-800">Mesa {selectedComanda.mesa?.numero}</p>
@@ -716,8 +734,8 @@ export function SalaoPage() {
                       </div>
                     </div>
 
-                    <div className="mt-4 grid gap-3 md:grid-cols-2">
-                      <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                    <div className={comandaModule === "mesa" || comandaModule === "participantes" ? "mt-4 grid gap-3 md:grid-cols-2" : "hidden"}>
+                      <div className={comandaModule === "mesa" ? "rounded-lg border border-gray-100 bg-gray-50 p-3" : "hidden"}>
                         <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-900">
                           <KeyRound className="h-4 w-4" />
                           PIN da sessão
@@ -732,7 +750,7 @@ export function SalaoPage() {
                           Gerar novo PIN
                         </button>
                       </div>
-                      <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                      <div className={comandaModule === "participantes" ? "rounded-lg border border-gray-100 bg-gray-50 p-3 md:col-span-2" : "hidden"}>
                         <div className="mb-2 text-sm font-semibold text-gray-900">Participantes</div>
                         <div className="space-y-1">
                           {arrayOrEmpty<any>(selectedComanda.participantes).map((participant) => (
@@ -754,7 +772,7 @@ export function SalaoPage() {
                       </div>
                     </div>
 
-                    <div className="mt-4 space-y-2">
+                    <div className={comandaModule === "pedidos" ? "mt-4 space-y-2" : "hidden"}>
                       {(selectedComanda.itens || []).length === 0 ? (
                         <div className="rounded-lg border border-dashed border-gray-200 p-6 text-center text-sm text-gray-500">
                           Nenhum produto adicionado.
@@ -776,7 +794,7 @@ export function SalaoPage() {
                       )}
                     </div>
 
-                    <div className="mt-5 grid gap-2 sm:flex sm:flex-wrap">
+                    <div className={comandaModule === "pedidos" ? "mt-5 grid gap-2 sm:flex sm:flex-wrap" : "hidden"}>
                       <button
                         onClick={() => void closeAccount(selectedComanda)}
                         disabled={(selectedComanda.itens || []).length === 0 || selectedComanda.status === "fechada" || actionBusy === `close-${selectedComanda.id}`}
@@ -798,7 +816,7 @@ export function SalaoPage() {
                     </div>
                   </div>
 
-                  <div className="order-1 sticky top-0 z-20 self-start rounded-xl border border-gray-100 bg-gray-50 p-3 shadow-sm lg:order-none lg:top-3">
+                  <div className={comandaModule === "adicionar" ? "order-1 sticky top-[60px] z-20 self-start rounded-xl border border-gray-100 bg-gray-50 p-3 shadow-sm lg:order-none lg:top-3" : "hidden"}>
                     <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-900">
                       <ShoppingCart className="h-4 w-4" />
                       Adicionar produto
@@ -890,6 +908,7 @@ export function SalaoPage() {
                     </button>
                   </div>
                 </div>
+                </>
               ) : (
                 <div className="text-sm text-gray-500">Selecione uma comanda.</div>
               )}
