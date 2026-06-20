@@ -36,6 +36,8 @@ const sections = [
 ];
 
 const mpOAuthErrorMessages: Record<string, string> = {
+  MERCADOPAGO_OAUTH_INVALID_CLIENT_CREDENTIALS:
+    "Client ID ou Client Secret do Mercado Pago inválidos. Atualize o MP_CLIENT_SECRET no Secret Manager/Cloud Run com o Client Secret da aplicação 8311971833041903 e tente conectar novamente.",
   MERCADOPAGO_OAUTH_TOKEN_EXCHANGE_FAILED:
     "Não foi possível concluir a conexão com o Mercado Pago. Verifique se a Redirect URL cadastrada no Mercado Pago é exatamente a URL do backend e se as credenciais da aplicação estão corretas.",
   mercadopago_oauth_failed:
