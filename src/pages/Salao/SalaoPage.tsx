@@ -507,16 +507,16 @@ export function SalaoPage() {
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-gray-50">
-      <div className="border-b border-gray-200 bg-white px-4 py-3 sm:px-6 sm:py-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="border-b border-gray-200 bg-white px-3 py-2 sm:px-6 sm:py-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-xl font-semibold text-gray-900">Salao</h1>
-            <p className="text-sm text-gray-500">Mesas, comandas, atendimento e cozinha.</p>
+            <h1 className="text-lg font-semibold text-gray-900 sm:text-xl">Salao</h1>
+            <p className="text-xs text-gray-500 sm:text-sm">Mesas, comandas, atendimento e cozinha.</p>
           </div>
           <button
             onClick={() => void load({ manual: true, includeProducts: true })}
             disabled={loading || refreshing}
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#122a4c] px-4 py-2 text-sm font-semibold text-white shadow-md shadow-blue-200 hover:bg-[#0b1e38] disabled:opacity-60"
+            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-[#122a4c] px-3 py-2 text-xs font-semibold text-white shadow-md shadow-blue-200 hover:bg-[#0b1e38] disabled:opacity-60 sm:min-h-11 sm:px-4 sm:text-sm"
           >
             <RefreshCw className={`h-4 w-4 ${loading || refreshing ? "animate-spin" : ""}`} />
             {loading || refreshing ? "Atualizando..." : "Atualizar"}
@@ -531,7 +531,7 @@ export function SalaoPage() {
             <button
               key={String(id)}
               onClick={() => setTab(id as any)}
-              className={`inline-flex min-h-11 shrink-0 items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold ${tab === id ? activeTabClass : "text-gray-500"}`}
+              className={`inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold sm:min-h-11 sm:gap-2 sm:px-4 sm:text-sm ${tab === id ? activeTabClass : "text-gray-500"}`}
             >
               <Icon className="h-4 w-4" />
               {label}
@@ -540,7 +540,7 @@ export function SalaoPage() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto p-4 pb-24 sm:p-6">
+      <div className="flex-1 overflow-auto p-3 pb-20 sm:p-6">
         {loading ? (
           <div className="flex h-64 items-center justify-center text-gray-500">
             <Loader2 className="mr-2 h-5 w-5 animate-spin" />
@@ -549,14 +549,14 @@ export function SalaoPage() {
         ) : tab === "mesas" ? (
           <div className="space-y-4">
             {openingRequests.length > 0 && (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 sm:p-4">
                 <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-amber-900">
                   <UserCheck className="h-4 w-4" />
                   Solicitações de abertura pendentes
                 </div>
                 <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
                   {openingRequests.map((request) => (
-                    <div key={request.id} className="rounded-lg border border-amber-200 bg-white p-3">
+                    <div key={request.id} className="rounded-lg border border-amber-200 bg-white p-2.5 sm:p-3">
                       <div className="font-semibold text-gray-900">Mesa {request.mesa?.numero}</div>
                       <div className="text-sm text-gray-600">{request.nome_snapshot || "Cliente"}</div>
                       <div className="mt-3 flex gap-2">
@@ -599,11 +599,11 @@ export function SalaoPage() {
               </button>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-2 sm:grid-cols-2 sm:gap-3 xl:grid-cols-4">
               {mesas.map((mesa) => (
                 <div
                   key={mesa.id}
-                  className={`rounded-lg border bg-white p-4 shadow-sm transition-all ${
+                  className={`rounded-lg border bg-white p-3 shadow-sm transition-all sm:p-4 ${
                     realtimeMesaId === mesa.id
                       ? "border-emerald-500 ring-4 ring-emerald-200 animate-pulse"
                       :
@@ -619,7 +619,7 @@ export function SalaoPage() {
                   <div className="flex items-start justify-between">
                     <div>
                       <div className="text-sm text-gray-500">Mesa</div>
-                      <div className="text-2xl font-semibold text-gray-900">{mesa.numero}</div>
+                      <div className="text-xl font-semibold text-gray-900 sm:text-2xl">{mesa.numero}</div>
                     </div>
                     <span className={`rounded-full px-3 py-1.5 text-xs font-extrabold uppercase tracking-wide ${tableStatusClass[mesa.status] || "bg-gray-100 text-gray-700"}`}>
                       {mesa.status?.replace(/_/g, " ")}
@@ -638,11 +638,11 @@ export function SalaoPage() {
                       {mesa.comanda_aberta.status === "fechada" && <div className="font-semibold text-blue-700">Aguardando pagamento</div>}
                     </div>
                   )}
-                  <div className="mt-4 space-y-2">
+                  <div className="mt-3 space-y-1.5 sm:mt-4 sm:space-y-2">
                     <button
                       onClick={() => void openComanda(mesa)}
                       disabled={Boolean(mesa.comanda_aberta) || actionBusy === `open-${mesa.id}`}
-                      className="min-h-11 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold disabled:opacity-50"
+                      className="min-h-10 w-full rounded-xl border border-gray-200 px-3 py-1.5 text-xs font-semibold disabled:opacity-50 sm:min-h-11 sm:py-2 sm:text-sm"
                     >
                       {actionBusy === `open-${mesa.id}` ? <span className="inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Abrindo...</span> : mesa.comanda_aberta ? `Comanda ${mesa.comanda_aberta.numero_comanda}` : "Abrir comanda"}
                     </button>
@@ -650,7 +650,7 @@ export function SalaoPage() {
                       <button
                         onClick={() => setQrDownloadMesa(mesa)}
                         disabled={actionBusy === `qr-${mesa.id}` || actionBusy === `print-qr-${mesa.id}`}
-                        className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 disabled:opacity-60"
+                        className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl border border-blue-100 bg-blue-50 px-2 py-1.5 text-xs font-semibold text-blue-700 disabled:opacity-60 sm:min-h-11 sm:gap-2 sm:px-3 sm:py-2 sm:text-sm"
                       >
                         {actionBusy === `qr-${mesa.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
                         {actionBusy === `qr-${mesa.id}` ? "Gerando..." : "Baixar QR"}
@@ -658,7 +658,7 @@ export function SalaoPage() {
                       <button
                         onClick={() => void printQrCode(mesa)}
                         disabled={actionBusy === `qr-${mesa.id}` || actionBusy === `print-qr-${mesa.id}`}
-                        className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 disabled:opacity-60"
+                        className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2 py-1.5 text-xs font-semibold text-slate-700 disabled:opacity-60 sm:min-h-11 sm:gap-2 sm:px-3 sm:py-2 sm:text-sm"
                       >
                         {actionBusy === `print-qr-${mesa.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
                         {actionBusy === `print-qr-${mesa.id}` ? "Preparando..." : "Imprimir QR"}
@@ -670,7 +670,7 @@ export function SalaoPage() {
                           setTab("comandas");
                           void selectComanda(mesa.comanda_aberta);
                         }}
-                        className="min-h-11 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold"
+                        className="min-h-10 w-full rounded-xl border border-gray-200 px-3 py-1.5 text-xs font-semibold sm:min-h-11 sm:py-2 sm:text-sm"
                       >
                         Ver comanda
                       </button>
@@ -681,13 +681,13 @@ export function SalaoPage() {
             </div>
           </div>
         ) : tab === "comandas" ? (
-          <div className="grid gap-4 xl:grid-cols-[minmax(260px,360px)_1fr]">
+          <div className="grid gap-3 xl:grid-cols-[minmax(260px,360px)_1fr] xl:gap-4">
             <div className="space-y-3">
               {comandas.map((comanda) => (
                 <button
                   key={comanda.id}
                   onClick={() => void selectComanda(comanda)}
-                  className={`min-h-20 w-full rounded-xl border bg-white p-4 text-left shadow-sm hover:border-blue-200 active:scale-[0.99] ${
+                  className={`min-h-16 w-full rounded-xl border bg-white p-3 text-left shadow-sm hover:border-blue-200 active:scale-[0.99] sm:min-h-20 sm:p-4 ${
                     selectedComanda?.id === comanda.id ? "border-blue-500 bg-blue-50 ring-2 ring-blue-100" : "border-gray-200"
                   }`}
                 >
@@ -705,7 +705,7 @@ export function SalaoPage() {
               ))}
             </div>
 
-            <div ref={comandaDetailRef} className="scroll-mt-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+            <div ref={comandaDetailRef} className="scroll-mt-4 rounded-xl border border-gray-200 bg-white p-3 shadow-sm sm:p-4">
               {selectedComanda ? (
                 <>
                   <div className="sticky top-0 z-30 -mx-4 mb-4 flex gap-1 overflow-x-auto border-b border-gray-100 bg-white px-4 py-2 shadow-sm scrollbar-hide">
@@ -715,12 +715,12 @@ export function SalaoPage() {
                       ["pedidos", ClipboardList, "Pedidos"],
                       ["adicionar", ShoppingCart, "Adicionar produto"],
                     ].map(([id, Icon, label]) => (
-                      <button key={String(id)} onClick={() => setComandaModule(id as typeof comandaModule)} className={`inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold ${comandaModule === id ? "bg-[#122a4c] text-white shadow-sm" : "bg-slate-100 text-slate-600"}`}>
+                      <button key={String(id)} onClick={() => setComandaModule(id as typeof comandaModule)} className={`inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-[11px] font-bold sm:min-h-11 sm:gap-2 sm:px-3 sm:py-2 sm:text-xs ${comandaModule === id ? "bg-[#122a4c] text-white shadow-sm" : "bg-slate-100 text-slate-600"}`}>
                         <Icon className="h-4 w-4" /> {label}
                       </button>
                     ))}
                   </div>
-                <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
+                <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-5">
                   <div className="order-2 lg:order-none">
                     <div className={comandaModule === "mesa" ? "flex flex-col gap-2 border-b border-gray-100 pb-4 sm:flex-row sm:items-center sm:justify-between" : "hidden"}>
                       <div>
@@ -729,18 +729,18 @@ export function SalaoPage() {
                       </div>
                       <div className="text-left sm:text-right">
                         <div className="text-xs text-gray-500">Total</div>
-                        <div className="text-xl font-semibold text-gray-900">R$ {formatMoney(selectedComanda.total)}</div>
+                        <div className="text-lg font-semibold text-gray-900 sm:text-xl">R$ {formatMoney(selectedComanda.total)}</div>
                         <div className="text-xs capitalize text-gray-500">{selectedComanda.status?.replace(/_/g, " ")}</div>
                       </div>
                     </div>
 
-                    <div className={comandaModule === "mesa" || comandaModule === "participantes" ? "mt-4 grid gap-3 md:grid-cols-2" : "hidden"}>
-                      <div className={comandaModule === "mesa" ? "rounded-lg border border-gray-100 bg-gray-50 p-3" : "hidden"}>
+                    <div className={comandaModule === "mesa" || comandaModule === "participantes" ? "mt-3 grid gap-2 md:grid-cols-2 sm:mt-4 sm:gap-3" : "hidden"}>
+                      <div className={comandaModule === "mesa" ? "rounded-lg border border-gray-100 bg-gray-50 p-2.5 sm:p-3" : "hidden"}>
                         <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-900">
                           <KeyRound className="h-4 w-4" />
                           PIN da sessão
                         </div>
-                        <div className="text-2xl font-semibold tracking-widest text-gray-950">{latestPin || selectedComanda.pin || "----"}</div>
+                        <div className="text-xl font-semibold tracking-widest text-gray-950 sm:text-2xl">{latestPin || selectedComanda.pin || "----"}</div>
                         <button
                           onClick={() => void regeneratePin(selectedComanda)}
                           disabled={!["aberta", "aguardando_conta"].includes(selectedComanda.status)}
@@ -750,7 +750,7 @@ export function SalaoPage() {
                           Gerar novo PIN
                         </button>
                       </div>
-                      <div className={comandaModule === "participantes" ? "rounded-lg border border-gray-100 bg-gray-50 p-3 md:col-span-2" : "hidden"}>
+                      <div className={comandaModule === "participantes" ? "rounded-lg border border-gray-100 bg-gray-50 p-2.5 md:col-span-2 sm:p-3" : "hidden"}>
                         <div className="mb-2 text-sm font-semibold text-gray-900">Participantes</div>
                         <div className="space-y-1">
                           {arrayOrEmpty<any>(selectedComanda.participantes).map((participant) => (
@@ -772,14 +772,14 @@ export function SalaoPage() {
                       </div>
                     </div>
 
-                    <div className={comandaModule === "pedidos" ? "mt-4 space-y-2" : "hidden"}>
+                    <div className={comandaModule === "pedidos" ? "mt-3 space-y-1.5 sm:mt-4 sm:space-y-2" : "hidden"}>
                       {(selectedComanda.itens || []).length === 0 ? (
                         <div className="rounded-lg border border-dashed border-gray-200 p-6 text-center text-sm text-gray-500">
                           Nenhum produto adicionado.
                         </div>
                       ) : (
                         selectedComanda.itens.map((item: any) => (
-                          <div key={item.id} className="flex items-start justify-between gap-3 rounded-lg border border-gray-100 p-3">
+                          <div key={item.id} className="flex items-start justify-between gap-2 rounded-lg border border-gray-100 p-2.5 sm:gap-3 sm:p-3">
                             <div>
                               <div className="font-medium text-gray-900">{item.nome_produto}</div>
                               <div className="text-xs text-gray-500">
@@ -794,11 +794,11 @@ export function SalaoPage() {
                       )}
                     </div>
 
-                    <div className={comandaModule === "pedidos" ? "mt-5 grid gap-2 sm:flex sm:flex-wrap" : "hidden"}>
+                    <div className={comandaModule === "pedidos" ? "mt-3 grid gap-2 sm:mt-5 sm:flex sm:flex-wrap" : "hidden"}>
                       <button
                         onClick={() => void closeAccount(selectedComanda)}
                         disabled={(selectedComanda.itens || []).length === 0 || selectedComanda.status === "fechada" || actionBusy === `close-${selectedComanda.id}`}
-                        className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                        className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-white disabled:opacity-50 sm:min-h-12 sm:px-4 sm:text-sm"
                         style={{ backgroundColor: PRIMARY }}
                       >
                         {actionBusy === `close-${selectedComanda.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Receipt className="h-4 w-4" />}
@@ -807,7 +807,7 @@ export function SalaoPage() {
                       {["fechada", "aguardando_conta"].includes(selectedComanda.status) && (
                         <button
                           onClick={() => void confirmPayment(selectedComanda)}
-                          className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white"
+                          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white sm:min-h-12 sm:px-4 sm:text-sm"
                         >
                           <CreditCard className="h-4 w-4" />
                           Confirmar pagamento
@@ -816,7 +816,7 @@ export function SalaoPage() {
                     </div>
                   </div>
 
-                  <div className={comandaModule === "adicionar" ? "order-1 sticky top-[60px] z-20 self-start rounded-xl border border-gray-100 bg-gray-50 p-3 shadow-sm lg:order-none lg:top-3" : "hidden"}>
+                  <div className={comandaModule === "adicionar" ? "order-1 sticky top-[52px] z-20 self-start rounded-xl border border-gray-100 bg-gray-50 p-2.5 shadow-sm lg:order-none lg:top-3 lg:p-3" : "hidden"}>
                     <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-900">
                       <ShoppingCart className="h-4 w-4" />
                       Adicionar produto
@@ -853,7 +853,7 @@ export function SalaoPage() {
                       <div className="mt-3 flex items-center gap-2 text-sm text-gray-500"><Loader2 className="h-4 w-4 animate-spin" /> Carregando variações e adicionais...</div>
                     )}
                     {selectedProductConfiguration && (
-                      <div className="mt-3 max-h-72 space-y-3 overflow-auto rounded-lg border border-blue-100 bg-blue-50 p-3">
+                      <div className="mt-2 max-h-64 space-y-2 overflow-auto rounded-lg border border-blue-100 bg-blue-50 p-2.5 sm:mt-3 sm:max-h-72 sm:space-y-3 sm:p-3">
                         <div className="text-xs font-bold text-blue-900">Configure o item antes de adicionar</div>
                         {(selectedProductConfiguration.variacoes || []).length > 0 && (
                           <div>
@@ -882,7 +882,7 @@ export function SalaoPage() {
                       </div>
                     )}
 
-                    <div className="mt-3 grid grid-cols-[92px_1fr] gap-2">
+                    <div className="mt-2 grid grid-cols-[84px_1fr] gap-2 sm:mt-3 sm:grid-cols-[92px_1fr]">
                       <input
                         value={itemQuantity}
                         onChange={(event) => setItemQuantity(event.target.value)}
@@ -900,7 +900,7 @@ export function SalaoPage() {
                     <button
                       onClick={() => void addProductToComanda()}
                       disabled={!selectedProduct || addingItem || configurationLoading || !configurationIsValid || selectedComanda.status !== "aberta"}
-                      className="mt-3 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                      className="mt-2 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-white disabled:opacity-50 sm:mt-3 sm:min-h-12 sm:px-4 sm:text-sm"
                       style={{ backgroundColor: PRIMARY }}
                     >
                       {addingItem ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
