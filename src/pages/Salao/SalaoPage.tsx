@@ -25,6 +25,51 @@ import { showSystemNotice } from "@/shared/components/SystemNoticeModal";
 
 const PRIMARY = "#122a4c";
 
+const SALAO_STATUS_STYLES: Record<string, { label: string; badge: string; card: string }> = {
+  rascunho: {
+    label: "Rascunho",
+    badge: "border-slate-300 bg-slate-100 text-slate-700",
+    card: "border-slate-300 bg-slate-50",
+  },
+  enviado: {
+    label: "Enviado",
+    badge: "border-amber-300 bg-amber-100 text-amber-900",
+    card: "border-amber-300 bg-amber-50",
+  },
+  recebido: {
+    label: "Recebido",
+    badge: "border-sky-300 bg-sky-100 text-sky-900",
+    card: "border-sky-300 bg-sky-50",
+  },
+  preparando: {
+    label: "Em preparo",
+    badge: "border-orange-300 bg-orange-100 text-orange-900",
+    card: "border-orange-300 bg-orange-50",
+  },
+  pronto: {
+    label: "Pronto",
+    badge: "border-emerald-300 bg-emerald-100 text-emerald-900",
+    card: "border-emerald-300 bg-emerald-50",
+  },
+  entregue: {
+    label: "Entregue",
+    badge: "border-violet-300 bg-violet-100 text-violet-900",
+    card: "border-violet-300 bg-violet-50",
+  },
+  cancelado: {
+    label: "Cancelado",
+    badge: "border-rose-300 bg-rose-100 text-rose-900",
+    card: "border-rose-300 bg-rose-50",
+  },
+};
+
+const getSalaoStatusStyle = (status: unknown) =>
+  SALAO_STATUS_STYLES[String(status || "").toLowerCase()] || {
+    label: String(status || "Sem status").replace(/_/g, " "),
+    badge: "border-gray-300 bg-gray-100 text-gray-700",
+    card: "border-gray-200 bg-white",
+  };
+
 const resolveClientBaseUrl = () => {
   const configured = import.meta.env.VITE_CLIENTE_URL?.trim();
   if (configured) return configured.replace(/\/$/, "");
@@ -687,8 +732,8 @@ export function SalaoPage() {
                 <button
                   key={comanda.id}
                   onClick={() => void selectComanda(comanda)}
-                  className={`min-h-16 w-full rounded-xl border bg-white p-3 text-left shadow-sm hover:border-blue-200 active:scale-[0.99] sm:min-h-20 sm:p-4 ${
-                    selectedComanda?.id === comanda.id ? "border-blue-500 bg-blue-50 ring-2 ring-blue-100" : "border-gray-200"
+                  className={`min-h-16 w-full rounded-xl border p-3 text-left shadow-sm hover:border-blue-200 active:scale-[0.99] sm:min-h-20 sm:p-4 ${
+                    selectedComanda?.id === comanda.id ? "border-blue-500 bg-blue-50 ring-2 ring-blue-100" : getSalaoStatusStyle(comanda.status).card
                   }`}
                 >
                   <div className="flex items-center justify-between">
@@ -698,7 +743,9 @@ export function SalaoPage() {
                     </div>
                     <div className="text-right">
                       <div className="font-semibold text-gray-900">R$ {formatMoney(comanda.total)}</div>
-                      <div className="text-xs capitalize text-gray-500">{comanda.status}</div>
+                      <span className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-xs font-bold ${getSalaoStatusStyle(comanda.status).badge}`}>
+                        {getSalaoStatusStyle(comanda.status).label}
+                      </span>
                     </div>
                   </div>
                 </button>
@@ -782,8 +829,11 @@ export function SalaoPage() {
                           <div key={item.id} className="flex items-start justify-between gap-2 rounded-lg border border-gray-100 p-2.5 sm:gap-3 sm:p-3">
                             <div>
                               <div className="font-medium text-gray-900">{item.nome_produto}</div>
-                              <div className="text-xs text-gray-500">
-                                {item.quantidade} x R$ {formatMoney(item.preco_unitario)} · {item.status}
+                              <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-gray-500">
+                                <span>{item.quantidade} x R$ {formatMoney(item.preco_unitario)}</span>
+                                <span className={`inline-flex rounded-full border px-2 py-0.5 font-bold ${getSalaoStatusStyle(item.status).badge}`}>
+                                  {getSalaoStatusStyle(item.status).label}
+                                </span>
                               </div>
                               {item.adicionado_por && <div className="mt-1 text-xs font-semibold text-blue-700">Adicionado por {item.adicionado_por}</div>}
                               {item.observacoes && <div className="mt-1 text-xs text-gray-500">{item.observacoes}</div>}
@@ -917,7 +967,7 @@ export function SalaoPage() {
         ) : (
           <div className="grid gap-3 xl:grid-cols-3">
             {kds.map((item) => (
-              <div key={item.id} className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+              <div key={item.id} className={`rounded-lg border p-4 shadow-sm ${getSalaoStatusStyle(item.status).card}`}>
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="font-semibold text-gray-900">{item.nome_produto}</div>
@@ -925,8 +975,8 @@ export function SalaoPage() {
                       Mesa {item.mesa?.numero} · {item.numero_comanda}
                     </div>
                   </div>
-                  <span className="rounded-full bg-amber-50 px-2 py-1 text-xs capitalize text-amber-700">
-                    {item.status}
+                  <span className={`rounded-full border px-2 py-1 text-xs font-bold ${getSalaoStatusStyle(item.status).badge}`}>
+                    {getSalaoStatusStyle(item.status).label}
                   </span>
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2">
