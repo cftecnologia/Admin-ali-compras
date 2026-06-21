@@ -31,6 +31,16 @@ const navItems = [
   { label: 'Configurações', icon: Settings, path: '/settings', slug: 'configuracoes' },
 ];
 
+const navGroups = [
+  { title: 'Visão geral', paths: ['/dashboard'] },
+  { title: 'Operação', paths: ['/driver', '/orders', '/salao', '/deliveries', '/entregadores'] },
+  { title: 'Cardápio', paths: ['/products', '/categories'] },
+  { title: 'Marketing e vendas', paths: ['/promotions', '/coupons', '/banners', '/notifications'] },
+  { title: 'Clientes', paths: ['/customers'] },
+  { title: 'Financeiro', paths: ['/payments', '/reports'] },
+  { title: 'Administração', paths: ['/users', '/settings'] },
+];
+
 const superAdminItems = [
   { label: 'Permissões', icon: Key, path: '/permissions' },
 ];
@@ -134,6 +144,24 @@ export function AdminLayout() {
     navigate('/login');
   };
 
+  const canViewNavItem = (item: (typeof navItems)[number]) => {
+    if (user?.perfil === 'entregador') return item.path === '/driver';
+    // Hide "Minhas Entregas" from non-drivers to keep sidebar clean
+    if (item.path === '/driver') return false;
+    if (user?.perfil === 'superadmin' || user?.perfil === 'administrador') return true;
+    return user?.permissions?.includes(item.slug);
+  };
+
+  const visibleNavGroups = navGroups
+    .map(group => ({
+      ...group,
+      items: group.paths
+        .map(path => navItems.find(item => item.path === path))
+        .filter((item): item is (typeof navItems)[number] => Boolean(item))
+        .filter(canViewNavItem),
+    }))
+    .filter(group => group.items.length > 0);
+
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden">
       {/* Overlay mobile */}
@@ -168,42 +196,40 @@ export function AdminLayout() {
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 overflow-y-auto py-3 px-3 space-y-0.5">
-          {navItems
-            .filter(item => {
-              if (user?.perfil === 'entregador') {
-                return item.path === '/driver';
-              }
-              // Hide "Minhas Entregas" from non-drivers to keep sidebar clean
-              if (item.path === '/driver') return false;
-
-              if (user?.perfil === 'superadmin' || user?.perfil === 'administrador') return true;
-              return user?.permissions?.includes(item.slug);
-            })
-            .map((item) => {
-              const active = isActive(item.path);
-              return (
-                <button
-                  key={item.path}
-                  onClick={() => { navigate(item.path); setSidebarOpen(false); }}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-150 group`}
-                  style={{
-                    backgroundColor: active ? 'rgba(255,255,255,0.15)' : 'transparent',
-                    color: active ? 'white' : 'rgba(255,255,255,0.65)',
-                  }}
-                  onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(255,255,255,0.08)'; }}
-                  onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
-                >
-                  <item.icon className="w-4 h-4 flex-shrink-0" />
-                  <span>{item.label}</span>
-                  {active && <ChevronRight className="w-3.5 h-3.5 ml-auto opacity-70" />}
-                </button>
-              );
-            })}
+        <nav className="flex-1 overflow-y-auto py-3 px-3">
+          {visibleNavGroups.map((group, groupIndex) => (
+            <section key={group.title} className={groupIndex === 0 ? '' : 'mt-4'}>
+              <h2 className="px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-white/35">
+                {group.title}
+              </h2>
+              <div className="space-y-0.5">
+                {group.items.map((item) => {
+                  const active = isActive(item.path);
+                  return (
+                    <button
+                      key={item.path}
+                      onClick={() => { navigate(item.path); setSidebarOpen(false); }}
+                      className="group flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-all duration-150"
+                      style={{
+                        backgroundColor: active ? 'rgba(255,255,255,0.15)' : 'transparent',
+                        color: active ? 'white' : 'rgba(255,255,255,0.65)',
+                      }}
+                      onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(255,255,255,0.08)'; }}
+                      onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
+                    >
+                      <item.icon className="h-4 w-4 flex-shrink-0" />
+                      <span>{item.label}</span>
+                      {active && <ChevronRight className="ml-auto h-3.5 w-3.5 opacity-70" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          ))}
 
           {user?.perfil === 'superadmin' && (
             <>
-              <div className="pt-4 pb-2 px-3 text-[10px] font-bold text-white/30 uppercase tracking-wider">Master</div>
+              <div className="px-3 pb-1.5 pt-4 text-[10px] font-semibold uppercase tracking-wider text-white/35">Master</div>
               {superAdminItems.map((item) => {
                 const active = isActive(item.path);
                 return (
