@@ -2,7 +2,7 @@ import api from "@/shared/lib/api";
 import type { ProductConfiguration, ProductStorePayload } from "../types/product";
 
 const STORE_PRODUCTS_CACHE_PREFIX = "admin-store-products:v1:";
-const ACTIVE_CATEGORIES_CACHE_PREFIX = "admin-active-categories:v5:";
+const ACTIVE_CATEGORIES_CACHE_PREFIX = "admin-active-categories:v6:";
 const CACHE_MAX_AGE = 5 * 60 * 1000;
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i;
 
@@ -173,16 +173,17 @@ export const productsService = {
     const cached = options.forceRefresh ? null : getSessionItem<any[]>(cacheKey);
     if (cached) return cached;
 
-    const firstResponse = await api.get("/categorias", {
-      params: { page: 1, per_page: 100 },
+    const categoriesEndpoint = `/lojas/${encodeURIComponent(lojaId)}/categorias`;
+    const firstResponse = await api.get(categoriesEndpoint, {
+      params: { ativa: true, include_all: true, page: 1, per_page: 100 },
     });
     const firstData = firstResponse.data?.data;
     const totalPages = firstData?.total_pages || 1;
     const remainingResponses = totalPages > 1
       ? await Promise.all(
           Array.from({ length: totalPages - 1 }, (_, index) =>
-            api.get("/categorias", {
-              params: { page: index + 2, per_page: 100 },
+            api.get(categoriesEndpoint, {
+              params: { ativa: true, include_all: true, page: index + 2, per_page: 100 },
             }),
           ),
         )
