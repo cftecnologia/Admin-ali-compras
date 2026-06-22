@@ -1,7 +1,13 @@
 import { type TouchEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { AlertTriangle, ChevronLeft, ChevronRight, Clock, Inbox, Loader2, MapPin, Package, RefreshCw } from 'lucide-react';
+import { AlertTriangle, ChevronLeft, ChevronRight, Clock, CloudUpload, Inbox, Loader2, MapPin, Package, RefreshCw, WifiOff } from 'lucide-react';
 import api from '@/shared/lib/api';
+import {
+  getCachedAssignedDeliveries,
+  getPendingStopSync,
+  isDriverOnline,
+  synchronizePendingStops,
+} from '../driverOfflineSync';
 
 const PRIMARY = '#122a4c';
 const DELIVERIES_PER_PAGE = 5;
@@ -103,11 +109,31 @@ export function MyDeliveriesScreen() {
   const [totalPages, setTotalPages] = useState(1);
   const [totals, setTotals] = useState<Record<DeliveryCategory, number>>({ pending: 0, completed: 0 });
   const [error, setError] = useState<string | null>(null);
+  const [online, setOnline] = useState(isDriverOnline());
+  const [pendingSyncCount, setPendingSyncCount] = useState(0);
   const touchStartYRef = useRef<number | null>(null);
   const activePage = pages[activeCategory];
 
   const fetchDeliveries = useCallback(async ({ refresh = false }: { refresh?: boolean } = {}) => {
     try {
+      if (!isDriverOnline()) {
+        const cachedRoutes = await getCachedAssignedDeliveries();
+        const cachedRoutesForCategory = cachedRoutes.filter(route => (
+          activeCategory === 'completed'
+            ? route.status === 'completed'
+            : route.status !== 'completed' && route.status !== 'canceled'
+        ));
+        setOnline(false);
+        setError(null);
+        setRoutes(sortDeliveries(cachedRoutesForCategory));
+        setTotalPages(1);
+        setTotals({
+          pending: cachedRoutes.filter(route => route.status !== 'completed' && route.status !== 'canceled').length,
+          completed: cachedRoutes.filter(route => route.status === 'completed').length,
+        });
+        return;
+      }
+
       if (refresh) {
         setIsRefreshing(true);
       } else {
@@ -115,6 +141,8 @@ export function MyDeliveriesScreen() {
         setRoutes([]);
       }
       setError(null);
+      const syncResult = await synchronizePendingStops(api).catch(() => null);
+      if (syncResult) setPendingSyncCount(syncResult.remaining);
       const response = await api.get('/delivery-routes/my-deliveries', {
         params: {
           category: activeCategory,
@@ -132,8 +160,26 @@ export function MyDeliveriesScreen() {
       if (activePage > nextTotalPages) {
         setPages((current) => ({ ...current, [activeCategory]: nextTotalPages }));
       }
+      setOnline(true);
     } catch (err) {
       console.error('Erro ao buscar entregas:', err);
+      if (!err?.response) {
+        const cachedRoutes = await getCachedAssignedDeliveries().catch(() => []);
+        const cachedRoutesForCategory = cachedRoutes.filter(route => (
+          activeCategory === 'completed'
+            ? route.status === 'completed'
+            : route.status !== 'completed' && route.status !== 'canceled'
+        ));
+        setOnline(false);
+        setRoutes(sortDeliveries(cachedRoutesForCategory));
+        setTotalPages(1);
+        setTotals({
+          pending: cachedRoutes.filter(route => route.status !== 'completed' && route.status !== 'canceled').length,
+          completed: cachedRoutes.filter(route => route.status === 'completed').length,
+        });
+        setError(cachedRoutes.length ? null : 'Não foi possível carregar suas entregas e ainda não há entregas salvas offline.');
+        return;
+      }
       setError('Não foi possível carregar suas entregas. Tente novamente.');
     } finally {
       setLoading(false);
@@ -144,6 +190,25 @@ export function MyDeliveriesScreen() {
 
   useEffect(() => {
     fetchDeliveries();
+  }, [fetchDeliveries]);
+
+  useEffect(() => {
+    void getPendingStopSync()
+      .then(items => setPendingSyncCount(items.length))
+      .catch(() => setPendingSyncCount(0));
+
+    const handleOffline = () => setOnline(false);
+    const handleOnline = () => {
+      setOnline(true);
+      void fetchDeliveries({ refresh: true });
+    };
+
+    window.addEventListener('offline', handleOffline);
+    window.addEventListener('online', handleOnline);
+    return () => {
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('online', handleOnline);
+    };
   }, [fetchDeliveries]);
 
   const handleTouchStart = useCallback((event: TouchEvent<HTMLDivElement>) => {
@@ -251,6 +316,20 @@ export function MyDeliveriesScreen() {
             </button>
         </div>
       </div>
+
+      {!online && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded-2xl text-sm font-medium flex items-start gap-3">
+          <WifiOff className="w-5 h-5 shrink-0 mt-0.5" />
+          <p>Você está offline. As entregas já salvas continuam disponíveis e as confirmações serão sincronizadas automaticamente quando a conexão voltar.</p>
+        </div>
+      )}
+
+      {online && pendingSyncCount > 0 && (
+        <div className="bg-blue-50 border border-blue-200 text-blue-900 px-4 py-3 rounded-2xl text-sm font-medium flex items-start gap-3">
+          <CloudUpload className="w-5 h-5 shrink-0 mt-0.5" />
+          <p>{pendingSyncCount} confirmação(ões) aguardando sincronização automática.</p>
+        </div>
+      )}
 
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-2xl text-sm font-medium flex items-center gap-3">

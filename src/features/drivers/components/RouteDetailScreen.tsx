@@ -2,10 +2,19 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import {
   AlertTriangle, ArrowLeft, Check, CheckCircle2, Clock, FileText, Loader2,
-  MapPin, Navigation, Package, Phone, Sparkles, Trophy, X,
+  CloudUpload, MapPin, Navigation, Package, Phone, Sparkles, Trophy, WifiOff, X,
 } from 'lucide-react';
 import api from '@/shared/lib/api';
 import { DriverRoute, DriverStop, getDeliveryLabel } from './MyDeliveriesScreen';
+import {
+  getCachedAssignedDelivery,
+  getPendingStopSync,
+  hashReceiptKey,
+  isDriverOnline,
+  queueStopSync,
+  saveAssignedDelivery,
+  synchronizePendingStops,
+} from '../driverOfflineSync';
 
 const PRIMARY = '#122a4c';
 
@@ -76,6 +85,8 @@ export function RouteDetailScreen() {
   const [receiptKey, setReceiptKey] = useState('');
   const [receiptKeyError, setReceiptKeyError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [online, setOnline] = useState(isDriverOnline());
+  const [pendingSyncCount, setPendingSyncCount] = useState(0);
 
   const fetchRoute = async () => {
     if (!id) return;
@@ -83,10 +94,12 @@ export function RouteDetailScreen() {
       setLoading(true);
       setError(null);
       const response = await api.get(`/delivery-routes/${decodeURIComponent(id)}`);
-      setRoute({
+      const optimizedRoute: DriverRoute = {
         ...response.data.route,
         stops: response.data.stops || [],
-      });
+      };
+      setRoute(optimizedRoute);
+      await saveAssignedDelivery(optimizedRoute);
     } catch (err) {
       console.error('Erro ao buscar entrega:', err);
       setError('Não foi possível carregar esta entrega.');
@@ -96,8 +109,70 @@ export function RouteDetailScreen() {
   };
 
   useEffect(() => {
-    fetchRoute();
+    void fetchRouteOfflineAware();
   }, [id]);
+
+  useEffect(() => {
+    if (route) {
+      void saveAssignedDelivery(route).catch(() => undefined);
+    }
+  }, [route]);
+
+  useEffect(() => {
+    void getPendingStopSync()
+      .then(items => setPendingSyncCount(items.length))
+      .catch(() => setPendingSyncCount(0));
+  }, []);
+
+  const fetchRouteOfflineAware = async () => {
+    if (!id || isDriverOnline()) {
+      await fetchRoute();
+      return;
+    }
+
+    setLoading(true);
+    setOnline(false);
+    const cachedRoute = await getCachedAssignedDelivery(id).catch(() => null);
+    setRoute(cachedRoute);
+    setError(cachedRoute ? null : 'Esta entrega ainda não está disponível offline. Conecte-se para carregá-la pela primeira vez.');
+    setLoading(false);
+  };
+
+  const synchronizeWhenOnline = async () => {
+    if (!isDriverOnline()) return;
+
+    try {
+      const result = await synchronizePendingStops(api);
+      setPendingSyncCount(result.remaining);
+      if (result.synchronized > 0) {
+        await fetchRoute();
+      }
+    } catch {
+      const items = await getPendingStopSync().catch(() => []);
+      setPendingSyncCount(items.length);
+    }
+  };
+
+  useEffect(() => {
+    if (isDriverOnline()) {
+      void synchronizeWhenOnline();
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleOffline = () => setOnline(false);
+    const handleOnline = () => {
+      setOnline(true);
+      void synchronizeWhenOnline();
+    };
+
+    window.addEventListener('offline', handleOffline);
+    window.addEventListener('online', handleOnline);
+    return () => {
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('online', handleOnline);
+    };
+  }, []);
 
   const stats = useMemo(() => {
     const stops = route?.stops || [];
@@ -113,6 +188,11 @@ export function RouteDetailScreen() {
 
   const generateRoute = async () => {
     if (!route) return;
+    if (!isDriverOnline()) {
+      setOnline(false);
+      setError('Você está offline. A rota otimizada precisa ser criada enquanto houver conexão. Depois disso, as entregas ficam disponíveis offline.');
+      return;
+    }
     try {
       setGenerating(true);
       setError(null);
@@ -121,10 +201,12 @@ export function RouteDetailScreen() {
         currentLatitude: position.coords.latitude,
         currentLongitude: position.coords.longitude,
       });
-      setRoute({
+      const optimizedRoute: DriverRoute = {
         ...response.data.route,
         stops: response.data.stops || [],
-      });
+      };
+      setRoute(optimizedRoute);
+      await saveAssignedDelivery(optimizedRoute);
     } catch (err) {
       console.error('Erro ao gerar rota otimizada:', err);
       setError(getApiErrorMessage(err, 'Não foi possível gerar a rota otimizada.'));
@@ -139,10 +221,53 @@ export function RouteDetailScreen() {
     reason?: string,
     chaveRecebimento?: string,
   ) => {
+    if (!route) return;
+
+    const queueConfirmation = async () => {
+      if (status === 'delivered' && route.requiresReceiptKey !== false && !chaveRecebimento) {
+        setReceiptKeyError('Informe a chave de recebimento com 4 dígitos.');
+        return false;
+      }
+
+      const receiptKeyHash = chaveRecebimento ? await hashReceiptKey(chaveRecebimento) : undefined;
+      await queueStopSync(route.id, stop.id, {
+        status,
+        reason,
+        ...(receiptKeyHash ? { chave_recebimento_hash: receiptKeyHash } : {}),
+      });
+
+      const checkedAt = new Date().toISOString();
+      const stops = route.stops.map(currentStop => currentStop.id === stop.id
+        ? {
+          ...currentStop,
+          status,
+          failedReason: status === 'failed' ? reason : undefined,
+          checkedAt,
+        }
+        : currentStop);
+      const allStopsFinished = stops.every(currentStop => currentStop.status !== 'pending');
+      setRoute({
+        ...route,
+        status: allStopsFinished ? 'completed' : 'in_progress',
+        completedAt: allStopsFinished ? checkedAt : route.completedAt,
+        stops,
+      });
+      setPendingSyncCount(current => current + 1);
+      setProblemFor(null);
+      setReceiptKeyFor(null);
+      setReceiptKey('');
+      return true;
+    };
+
     try {
       setUpdating(stop.id);
       setError(null);
       setReceiptKeyError(null);
+      if (!isDriverOnline()) {
+        setOnline(false);
+        await queueConfirmation();
+        return;
+      }
       await api.patch(`/delivery-route-stops/${stop.id}/check`, {
         status,
         reason,
@@ -154,6 +279,15 @@ export function RouteDetailScreen() {
       setReceiptKey('');
     } catch (err) {
       console.error('Erro ao atualizar parada:', err);
+      if (!err?.response) {
+        setOnline(false);
+        try {
+          await queueConfirmation();
+        } catch (offlineError) {
+          setError(getApiErrorMessage(offlineError, 'Não foi possível salvar esta confirmação para sincronização.'));
+        }
+        return;
+      }
       const message = getApiErrorMessage(err, 'Não foi possível atualizar o pedido.');
       if (status === 'delivered') {
         setReceiptKeyError(message);
@@ -213,6 +347,20 @@ export function RouteDetailScreen() {
           <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-2xl text-sm font-medium flex items-center gap-3">
             <AlertTriangle className="w-5 h-5 shrink-0" />
             <p>{error}</p>
+          </div>
+        )}
+
+        {!online && (
+          <div className="bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded-2xl text-sm font-medium flex items-start gap-3">
+            <WifiOff className="w-5 h-5 shrink-0 mt-0.5" />
+            <p>Você está offline. As confirmações ficarão salvas neste aparelho e serão sincronizadas automaticamente com o sistema quando a conexão voltar.</p>
+          </div>
+        )}
+
+        {online && pendingSyncCount > 0 && (
+          <div className="bg-blue-50 border border-blue-200 text-blue-900 px-4 py-3 rounded-2xl text-sm font-medium flex items-start gap-3">
+            <CloudUpload className="w-5 h-5 shrink-0 mt-0.5" />
+            <p>{pendingSyncCount} confirmação(ões) aguardando sincronização automática.</p>
           </div>
         )}
 
