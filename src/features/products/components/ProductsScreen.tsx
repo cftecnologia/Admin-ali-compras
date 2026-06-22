@@ -3,9 +3,10 @@ import { useNavigate } from 'react-router';
 import { 
   AlertCircle, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Copy, Edit2,
   Eye, FileUp, Filter, Grid2X2, List, Package, Plus, Power, Search, Star, Tag,
-  Trash2, UtensilsCrossed, X, Zap
+  ImagePlus, Trash2, UtensilsCrossed, X, Zap
 } from 'lucide-react';
 import { showSystemNotice } from '@/shared/components/SystemNoticeModal';
+import api from '@/shared/lib/api';
 import { useProducts } from '../hooks/useProducts';
 import { productsService } from '../services/productsService';
 import { parseMoney, parseQuantity, parseStock } from '../utils/formatProductData';
@@ -233,7 +234,7 @@ function GlobalProductSelector({ existingProductIds, onSelect, onClose }: { exis
   );
 }
 
-function ProductForm({ product, isNew, categories, onClose, onSuccess }: { product: any; isNew: boolean; categories: any[]; onClose: () => void; onSuccess: () => void }) {
+function ProductForm({ product, isNew, categories, canManageImages, onClose, onSuccess }: { product: any; isNew: boolean; categories: any[]; canManageImages: boolean; onClose: () => void; onSuccess: () => void }) {
   const initialSaleType = product?.tipo_venda || (product?.vendavel_por_peso ? 'peso' : 'unidade');
   const [form, setForm] = useState({
     preco: product?.preco?.toString() ?? '',
@@ -258,6 +259,7 @@ function ProductForm({ product, isNew, categories, onClose, onSuccess }: { produ
   const [variationsData, setVariationsData] = useState<Record<string, any>>({});
   const [loadingVariations, setLoadingVariations] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [imageFile, setImageFile] = useState<File | null>(null);
   const departments = sortCategories(categories.filter((cat: any) => (cat.nivel ?? 1) === 1));
   const childCategories = sortCategories(categories.filter((cat: any) => cat.categoria_pai_id === departmentId));
   const subcategories = sortCategories(categories.filter((cat: any) => cat.categoria_pai_id === categoryId));
@@ -361,10 +363,12 @@ function ProductForm({ product, isNew, categories, onClose, onSuccess }: { produ
       };
 
       let produtoLojaId = product.id;
+      let productId = isNew ? product.id : product.produto_id;
 
       if (isNew) {
         const createdProduct = await productsService.createStoreProduct(payload);
         produtoLojaId = createdProduct.id;
+        productId = createdProduct.produto_id;
 
         // Vincula variações selecionadas com seus dados individuais
         if (selectedVariations.length > 0) {
@@ -381,6 +385,10 @@ function ProductForm({ product, isNew, categories, onClose, onSuccess }: { produ
         }
       } else {
         await productsService.updateStoreProduct(product.id, payload);
+      }
+
+      if (imageFile && productId) {
+        await productsService.uploadProductImage(productId, imageFile, true);
       }
 
       onSuccess();
@@ -433,6 +441,30 @@ function ProductForm({ product, isNew, categories, onClose, onSuccess }: { produ
                </div>
             </div>
           </div>
+
+          {canManageImages && (
+            <label className="block rounded-xl border border-dashed border-gray-300 bg-gray-50 p-3">
+              <span className="flex items-center gap-2 text-xs font-bold text-gray-700">
+                <ImagePlus className="w-4 h-4" /> Alterar imagem deste produto
+              </span>
+              <span className="mt-1 block text-[11px] text-gray-500">JPEG, PNG, WebP ou GIF (até 8 MB). A imagem é redimensionada e otimizada automaticamente.</span>
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                className="mt-2 block w-full text-xs text-gray-600"
+                onChange={(event) => {
+                  const file = event.target.files?.[0] || null;
+                  if (file && file.size > 8 * 1024 * 1024) {
+                    showSystemNotice('A imagem deve ter no máximo 8 MB.');
+                    event.target.value = '';
+                    return;
+                  }
+                  setImageFile(file);
+                }}
+              />
+              {imageFile && <span className="mt-1 block truncate text-[11px] text-gray-600">Selecionada: {imageFile.name}</span>}
+            </label>
+          )}
 
           {/* Section: Variations (New) */}
           {variations.length > 0 && isNew && (
@@ -731,6 +763,7 @@ export function ProductsScreen() {
   const [isSearchingGlobal, setIsSearchingGlobal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<any | null>(null);
   const [configurableEditor, setConfigurableEditor] = useState<{ product?: any; duplicate?: boolean } | null>(null);
+  const [canManageImages, setCanManageImages] = useState(false);
   const [departmentId, setDepartmentId] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [subcategoryId, setSubcategoryId] = useState('');
@@ -755,6 +788,17 @@ export function ProductsScreen() {
     toggleHighlight,
     toggleStatus,
   } = useProducts();
+
+  useEffect(() => {
+    const lojaId = JSON.parse(localStorage.getItem('user') || '{}')?.loja_id;
+    if (!lojaId) return;
+    api.get(`/lojas/${lojaId}`)
+      .then((response) => {
+        const store = response.data?.data || response.data;
+        setCanManageImages(['lanchonete', 'restaurante'].includes(store?.tipo_estabelecimento));
+      })
+      .catch(() => setCanManageImages(false));
+  }, []);
   const departments = sortCategories(dbCategories.filter((category: any) => (category.nivel ?? 1) === 1));
   const categories = sortCategories(dbCategories.filter((category: any) => category.categoria_pai_id === departmentId));
   const subcategories = sortCategories(dbCategories.filter((category: any) => category.categoria_pai_id === categoryId));
@@ -805,6 +849,7 @@ export function ProductsScreen() {
           product={editingProduct} 
           isNew={!!editingProduct.isNew}
           categories={dbCategories}
+          canManageImages={canManageImages}
           onClose={() => setEditingProduct(null)} 
           onSuccess={() => {
             fetchProducts({ forceRefresh: true });
@@ -818,6 +863,7 @@ export function ProductsScreen() {
           product={configurableEditor.product}
           duplicate={configurableEditor.duplicate}
           categories={dbCategories}
+          canManageImages={canManageImages}
           onClose={() => setConfigurableEditor(null)}
           onSuccess={() => {
             fetchProducts({ forceRefresh: true });

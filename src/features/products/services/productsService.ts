@@ -2,7 +2,7 @@ import api from "@/shared/lib/api";
 import type { ProductConfiguration, ProductStorePayload } from "../types/product";
 
 const STORE_PRODUCTS_CACHE_PREFIX = "admin-store-products:v1:";
-const ACTIVE_CATEGORIES_CACHE_PREFIX = "admin-active-categories:v6:";
+const ACTIVE_CATEGORIES_CACHE_PREFIX = "admin-store-categories:v7:";
 const CACHE_MAX_AGE = 5 * 60 * 1000;
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i;
 
@@ -163,10 +163,8 @@ export const productsService = {
 
   async getActiveCategories(options: { forceRefresh?: boolean } = {}) {
     const lojaId = getStoreId();
-    // No Admin, "em uso" significa que o produto está vinculado à loja, inclusive
-    // quando está temporariamente inativo. Assim, o gestor ainda consegue filtrar
-    // e reativar o item. Produtos simples e configuráveis usam a mesma categoria
-    // final no vínculo produtos_loja.
+    // O admin precisa enxergar todas as categorias ativas para cadastrar e editar
+    // itens, mesmo quando ainda não há produto associado ou todos estão inativos.
     if (!lojaId) return [];
 
     const cacheKey = `${ACTIVE_CATEGORIES_CACHE_PREFIX}${lojaId}`;
@@ -193,49 +191,8 @@ export const productsService = {
       ...remainingResponses.flatMap((response) => toList(response.data)),
     ];
 
-    const categoriesById = new Map(categories.map((category) => [category.id, category]));
-    const normalizeCategoryText = (value: unknown) => String(value || "")
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .trim()
-      .toLowerCase();
-    const categoriesByPath = new Map(
-      categories.map((category) => [normalizeCategoryText(category.caminho), category]),
-    );
-    const usedCategoryIds = new Set<string>();
-    const storeProducts = await this.getAllStoreProducts();
-
-    storeProducts.forEach((product) => {
-      const categoryId = product.categoria_final_id
-        || product.categoria_id
-        || product.produto_categoria_id;
-      const categoryPath = normalizeCategoryText(product.categoria_caminho);
-      const categoryName = normalizeCategoryText(product.categoria_nome);
-      let category = categoryId ? categoriesById.get(categoryId) : null;
-
-      if (!category && categoryPath) {
-        category = categoriesByPath.get(categoryPath);
-      }
-
-      if (!category && categoryName) {
-        category = categories.find((candidate) => (
-          normalizeCategoryText(candidate.nome) === categoryName
-        ));
-      }
-
-      while (category) {
-        if (usedCategoryIds.has(category.id)) break;
-        usedCategoryIds.add(category.id);
-        category = category.categoria_pai_id
-          ? categoriesById.get(category.categoria_pai_id)
-          : null;
-      }
-    });
-
-    const usedCategories = categories.filter((category) => usedCategoryIds.has(category.id));
-
-    setSessionItem(cacheKey, usedCategories);
-    return usedCategories;
+    setSessionItem(cacheKey, categories);
+    return categories;
   },
 
   async searchGlobalProducts(params: {
@@ -307,6 +264,26 @@ export const productsService = {
   async updateStoreProduct(productStoreId: string, payload: Partial<ProductStorePayload> & Record<string, any>) {
     await api.patch(`/produtos_loja/${productStoreId}`, payload);
     invalidateStoreProductsCache();
+  },
+
+  async uploadProductImage(productId: string, file: File, isPrimary = true) {
+    const formData = new FormData();
+    formData.append("image", file);
+    formData.append("is_primary", String(isPrimary));
+    const response = await api.post(`/produtos/${productId}/images/upload`, formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    invalidateStoreProductsCache();
+    return response.data.data;
+  },
+
+  async uploadProductImageFromUrl(productId: string, url: string, isPrimary = true) {
+    const response = await api.post(`/produtos/${productId}/images/from-url`, {
+      url,
+      is_primary: isPrimary,
+    });
+    invalidateStoreProductsCache();
+    return response.data.data;
   },
 
   async createStoreProductVariation(payload: Record<string, any>) {

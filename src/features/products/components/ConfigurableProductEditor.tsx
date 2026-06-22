@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Info, Plus, Trash2, X } from "lucide-react";
+import { ImagePlus, Info, Plus, Trash2, X } from "lucide-react";
 import { showSystemNotice } from "@/shared/components/SystemNoticeModal";
 import { productsService } from "../services/productsService";
 import type {
@@ -208,15 +208,17 @@ type Props = {
   product?: any;
   duplicate?: boolean;
   categories: any[];
+  canManageImages: boolean;
   onClose: () => void;
   onSuccess: () => void;
 };
 
-export function ConfigurableProductEditor({ product, duplicate = false, categories, onClose, onSuccess }: Props) {
+export function ConfigurableProductEditor({ product, duplicate = false, categories, canManageImages, onClose, onSuccess }: Props) {
   const [name, setName] = useState(duplicate ? `${product?.nome || "Item"} - cópia` : product?.nome || "");
   const [description, setDescription] = useState(product?.descricao || "");
   const [brand, setBrand] = useState(product?.marca || "");
-  const [imageUrl, setImageUrl] = useState(product?.imagem_url || "");
+  const imageUrl = product?.imagem_url || "";
+  const [imageFile, setImageFile] = useState<File | null>(null);
   const [categoryId, setCategoryId] = useState(product?.categoria_id || product?.categoria_final_id || "");
   const [basePrice, setBasePrice] = useState(numberValue(product?.preco));
   const [basePromotionalPrice, setBasePromotionalPrice] = useState<number | null>(nullableNumberValue(product?.preco_promocional));
@@ -374,6 +376,7 @@ export function ConfigurableProductEditor({ product, duplicate = false, categori
     try {
       setSaving(true);
       let productStoreId = product?.id;
+      let productId = product?.produto_id;
       let version = configuration.versao;
       if (!editingExisting) {
         const created = await productsService.createLocalProduct({
@@ -383,7 +386,6 @@ export function ConfigurableProductEditor({ product, duplicate = false, categori
           descricao: description.trim() || null,
           marca: brand.trim() || null,
           unidade_medida: "un",
-          imagem_url: imageUrl.trim() || null,
           preco: basePrice,
           preco_promocional: basePromotionalPrice,
           promocao_ate: dateTimePayloadValue(promotionUntil),
@@ -393,13 +395,13 @@ export function ConfigurableProductEditor({ product, duplicate = false, categori
           modo_estoque: "disponibilidade",
         });
         productStoreId = created.id;
+        productId = created.produto?.id;
         version = Number(created.configuracao_versao || 1);
       } else {
         await productsService.updateStoreProduct(productStoreId, {
           nome: name.trim(),
           descricao: description.trim() || null,
           marca: brand.trim() || null,
-          imagem_url: imageUrl.trim() || null,
           preco: basePrice,
           preco_promocional: basePromotionalPrice,
           promocao_ate: dateTimePayloadValue(promotionUntil),
@@ -413,6 +415,9 @@ export function ConfigurableProductEditor({ product, duplicate = false, categori
         ...normalizeConfigurationRules(configuration),
         versao: version,
       });
+      if (imageFile && productId) {
+        await productsService.uploadProductImage(productId, imageFile, true);
+      }
       onSuccess();
       onClose();
     } catch (error: any) {
@@ -504,10 +509,30 @@ export function ConfigurableProductEditor({ product, duplicate = false, categori
                 Promoção até
                 <input type="datetime-local" value={promotionUntil} onChange={(event) => setPromotionUntil(event.target.value)} className="w-full rounded-lg border p-2.5 text-sm font-normal text-gray-900" />
               </label>
-              <label className="space-y-1 text-xs font-semibold text-gray-600">
-                URL da imagem
-                <input value={imageUrl} onChange={(event) => setImageUrl(event.target.value)} className="w-full rounded-lg border p-2.5 text-sm font-normal text-gray-900" />
-              </label>
+              {canManageImages && (
+                <label className="space-y-1 text-xs font-semibold text-gray-600">
+                  Imagem do item
+                  <span className="flex items-center gap-2 rounded-lg border border-dashed bg-gray-50 p-2 text-xs font-normal text-gray-600">
+                    <ImagePlus className="h-4 w-4 text-gray-500" />
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0] || null;
+                        if (file && file.size > 8 * 1024 * 1024) {
+                          showSystemNotice("A imagem deve ter no máximo 8 MB.");
+                          event.target.value = "";
+                          return;
+                        }
+                        setImageFile(file);
+                      }}
+                      className="max-w-full text-xs"
+                    />
+                  </span>
+                  <span className="block text-[11px] font-normal text-gray-500">JPEG, PNG, WebP ou GIF. O arquivo é otimizado automaticamente antes de salvar.</span>
+                  {(imageFile || imageUrl) && <span className="block truncate text-[11px] font-normal text-gray-500">{imageFile?.name || "Imagem atual definida"}</span>}
+                </label>
+              )}
               <label className="space-y-1 text-xs font-semibold text-gray-600 md:col-span-2 lg:col-span-4">
                 Descrição do item
                 <textarea value={description} onChange={(event) => setDescription(event.target.value)} className="min-h-20 w-full rounded-lg border p-2.5 text-sm font-normal text-gray-900" />
