@@ -125,6 +125,14 @@ const unwrapList = (payload: any) => {
 const arrayOrEmpty = <T,>(value: unknown): T[] =>
   Array.isArray(value) ? value : [];
 
+const sortMesasByNumber = (items: any[]) =>
+  [...items].sort((first, second) =>
+    String(first?.numero ?? "").localeCompare(String(second?.numero ?? ""), "pt-BR", {
+      numeric: true,
+      sensitivity: "base",
+    }),
+  );
+
 const formatMoney = (value: unknown) =>
   Number(value || 0).toFixed(2).replace(".", ",");
 
@@ -217,7 +225,7 @@ export function SalaoPage() {
           : Promise.resolve(null),
         selectedComandaId ? salaoService.getComanda(selectedComandaId).catch(() => null) : Promise.resolve(null),
       ]);
-      setMesas(unwrapList(tablesPayload));
+      setMesas(sortMesasByNumber(unwrapList(tablesPayload)));
       setComandas(unwrapList(tabsPayload).filter((item: any) => !["paga", "cancelada"].includes(item.status)));
       setKds(unwrapList(kdsPayload));
       if (selectedComandaPayload && selectedComandaIdRef.current === selectedComandaId) {
