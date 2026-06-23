@@ -42,6 +42,7 @@ export function useProducts() {
                 : undefined,
           page,
           perPage: PER_PAGE,
+          includeOptionProducts: true,
         },
         options,
       );

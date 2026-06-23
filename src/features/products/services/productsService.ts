@@ -2,7 +2,7 @@ import api from "@/shared/lib/api";
 import type { ProductConfiguration, ProductStorePayload } from "../types/product";
 
 const STORE_PRODUCTS_CACHE_PREFIX = "admin-store-products:v1:";
-const ACTIVE_CATEGORIES_CACHE_PREFIX = "admin-product-categories:v8:";
+const ACTIVE_CATEGORIES_CACHE_PREFIX = "admin-product-categories:v10:";
 const CACHE_MAX_AGE = 5 * 60 * 1000;
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i;
 
@@ -180,23 +180,22 @@ export const productsService = {
   },
 
   async getActiveCategories(options: { forceRefresh?: boolean } = {}) {
-    // A tela administrativa precisa da árvore completa para navegação e edição.
-    // A rota pública da loja só expõe categorias usadas no catálogo e pode omitir
-    // níveis intermediários quando um produto está ligado diretamente a uma folha.
-    const cacheKey = ACTIVE_CATEGORIES_CACHE_PREFIX;
-    const cached = options.forceRefresh ? null : getSessionItem<any[]>(cacheKey);
-    if (cached) return cached;
-
+    // Os filtros de produtos devem refletir exclusivamente o catálogo da loja.
+    // A API também inclui os ancestrais necessários para preservar a navegação
+    // por departamento, categoria e subcategoria.
+    // Não há cache aqui: categorias variam conforme vínculos e não podem vazar
+    // de uma loja ou sessão anterior para o módulo atual.
+    void options;
     const categoriesEndpoint = "/categorias";
     const firstResponse = await api.get(categoriesEndpoint, {
-      params: { ativa: true, page: 1, per_page: 100 },
+      params: { ativa: true, apenas_vinculadas: true, page: 1, per_page: 100 },
     });
     const firstData = firstResponse.data?.data;
     const totalPages = firstData?.total_pages || 1;
     const remainingResponses = totalPages > 1
       ? await Promise.all(
           Array.from({ length: totalPages - 1 }, (_, index) =>
-            api.get(categoriesEndpoint, { params: { ativa: true, page: index + 2, per_page: 100 } }),
+            api.get(categoriesEndpoint, { params: { ativa: true, apenas_vinculadas: true, page: index + 2, per_page: 100 } }),
           ),
         )
       : [];
@@ -205,7 +204,6 @@ export const productsService = {
       ...remainingResponses.flatMap((response) => toList(response.data)),
     ];
 
-    setSessionItem(cacheKey, categories);
     return categories;
   },
 

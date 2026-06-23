@@ -1045,6 +1045,7 @@ export function ProductsScreen() {
               {filtered.map(product => {
                 const isActive = product.ativo_na_loja;
                 const stock = product.estoque || 0;
+                const isVirtualOptionProduct = product.produto_virtual_opcao === true;
                 
                 return (
                   <tr key={product.id} className="hover:bg-gray-50 transition-colors">
@@ -1115,14 +1116,14 @@ export function ProductsScreen() {
                       <div className="flex items-center justify-end gap-1">
                         <button
                           onClick={() => product.modo_compra === 'configuravel'
-                            ? setConfigurableEditor({ product })
+                            ? setConfigurableEditor({ product: isVirtualOptionProduct ? { ...product, id: product.produto_loja_id_origem } : product })
                             : setEditingProduct(product)}
                           className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-colors"
-                          title="Editar"
+                          title={isVirtualOptionProduct ? 'Editar cardápio de origem' : 'Editar'}
                         >
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
-                        {product.modo_compra === 'configuravel' && (
+                        {product.modo_compra === 'configuravel' && !isVirtualOptionProduct && (
                           <button
                             onClick={() => setConfigurableEditor({ product, duplicate: true })}
                             className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-colors"
@@ -1131,27 +1132,33 @@ export function ProductsScreen() {
                             <Copy className="w-3.5 h-3.5" />
                           </button>
                         )}
-                        <button
-                          onClick={() => toggleStatus(product.id, isActive)}
-                          className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-colors"
-                          title={isActive ? 'Desativar' : 'Ativar'}
-                        >
-                          <Power className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => toggleHighlight(product.id, product.destaque)}
-                          className={`p-1.5 rounded-lg transition-colors ${product.destaque ? 'bg-amber-50 text-amber-600' : 'hover:bg-amber-50 text-gray-500 hover:text-amber-600'}`} 
-                          title={product.destaque ? 'Remover Destaque' : 'Destacar'}
-                        >
-                          <Star className={`w-3.5 h-3.5 ${product.destaque ? 'fill-amber-600' : ''}`} />
-                        </button>
-                        <button
-                          onClick={() => removeProductFromStore(product)}
-                          className="p-1.5 rounded-lg hover:bg-red-50 text-gray-500 hover:text-red-600 transition-colors"
-                          title={product.escopo_catalogo === 'loja' ? 'Excluir produto da loja' : 'Desvincular produto da loja'}
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        {!isVirtualOptionProduct && (
+                          <button
+                            onClick={() => toggleStatus(product.id, isActive)}
+                            className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-colors"
+                            title={isActive ? 'Desativar' : 'Ativar'}
+                          >
+                            <Power className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {!isVirtualOptionProduct && (
+                          <button
+                            onClick={() => toggleHighlight(product.id, product.destaque)}
+                            className={`p-1.5 rounded-lg transition-colors ${product.destaque ? 'bg-amber-50 text-amber-600' : 'hover:bg-amber-50 text-gray-500 hover:text-amber-600'}`}
+                            title={product.destaque ? 'Remover Destaque' : 'Destacar'}
+                          >
+                            <Star className={`w-3.5 h-3.5 ${product.destaque ? 'fill-amber-600' : ''}`} />
+                          </button>
+                        )}
+                        {!isVirtualOptionProduct && (
+                          <button
+                            onClick={() => removeProductFromStore(product)}
+                            className="p-1.5 rounded-lg hover:bg-red-50 text-gray-500 hover:text-red-600 transition-colors"
+                            title={product.escopo_catalogo === 'loja' ? 'Excluir produto da loja' : 'Desvincular produto da loja'}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
 
                       </div>
                     </td>
