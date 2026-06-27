@@ -16,6 +16,7 @@ import {
   Receipt,
   Search,
   ShoppingCart,
+  Trash2,
   UserCheck,
 } from "lucide-react";
 import QRCode from "qrcode";
@@ -251,6 +252,7 @@ export function SalaoPage() {
   const [latestPin, setLatestPin] = useState("");
   const [realtimeMesaId, setRealtimeMesaId] = useState("");
   const [qrDownloadMesa, setQrDownloadMesa] = useState<any | null>(null);
+  const [deleteMesaTarget, setDeleteMesaTarget] = useState<any | null>(null);
   const loadingRef = useRef(false);
   const queuedManualRefreshRef = useRef(false);
   const selectedComandaIdRef = useRef("");
@@ -604,6 +606,32 @@ export function SalaoPage() {
         error?.response?.data?.message ||
           error?.message ||
           "Nao foi possivel imprimir o QR Code.",
+      );
+    } finally {
+      setActionBusy("");
+    }
+  };
+
+  const deleteMesa = async (mesa: any) => {
+    setActionBusy(`delete-${mesa.id}`);
+    try {
+      await salaoService.deleteMesa(mesa.id);
+      if (
+        selectedComanda?.mesa_id === mesa.id ||
+        selectedComanda?.mesa?.id === mesa.id
+      ) {
+        setSelectedComanda(null);
+      }
+      setDeleteMesaTarget(null);
+      showSystemNotice(
+        `Mesa ${mesa.numero} excluída. O QR Code anterior foi invalidado.`,
+      );
+      await load({ manual: true });
+    } catch (error: any) {
+      showSystemNotice(
+        error?.response?.data?.message ||
+          error?.message ||
+          "Nao foi possivel excluir a mesa.",
       );
     } finally {
       setActionBusy("");
@@ -1090,6 +1118,26 @@ export function SalaoPage() {
                         </button>
                       </div>
                     )}
+                    <div className="mt-2 rounded-lg border border-red-100 bg-red-50 p-2">
+                      <div className="mb-1 text-[10px] font-extrabold uppercase text-red-700">
+                        Área crítica
+                      </div>
+                      <button
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setDeleteMesaTarget(mesa);
+                        }}
+                        disabled={actionBusy === `delete-${mesa.id}`}
+                        className="inline-flex min-h-9 w-full items-center justify-center gap-1.5 rounded-md border border-red-200 bg-white px-2 py-1 text-xs font-bold text-red-700 hover:bg-red-100 disabled:opacity-60"
+                      >
+                        {actionBusy === `delete-${mesa.id}` ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
+                        Excluir mesa
+                      </button>
+                    </div>
                   </div>
                 );
               })}
@@ -1721,6 +1769,50 @@ export function SalaoPage() {
             >
               Cancelar
             </button>
+          </div>
+        </div>
+      )}
+      {deleteMesaTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-100 text-red-700">
+                <Trash2 className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="text-base font-extrabold text-slate-950">
+                  Excluir mesa {deleteMesaTarget.numero}
+                </h2>
+                <p className="mt-2 text-sm text-slate-600">
+                  Esta ação remove a mesa da operação. O QR Code desta mesa
+                  também será excluído e qualquer QR impresso anteriormente
+                  ficará inválido.
+                </p>
+                <p className="mt-2 text-sm font-semibold text-red-700">
+                  A exclusão será bloqueada se houver cliente, pedidos, conta
+                  solicitada ou pagamento pendente.
+                </p>
+              </div>
+            </div>
+            <div className="mt-5 grid gap-2 sm:grid-cols-2">
+              <button
+                onClick={() => setDeleteMesaTarget(null)}
+                disabled={Boolean(actionBusy)}
+                className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-700 disabled:opacity-60"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => void deleteMesa(deleteMesaTarget)}
+                disabled={Boolean(actionBusy)}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-3 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-60"
+              >
+                {actionBusy === `delete-${deleteMesaTarget.id}` && (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                )}
+                Excluir mesa
+              </button>
+            </div>
           </div>
         </div>
       )}

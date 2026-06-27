@@ -11,6 +11,9 @@ export const salaoService = {
   createMesa: async (data: Record<string, unknown>) =>
     unwrap(await api.post("/salao/mesas", data)),
 
+  deleteMesa: async (id: string) =>
+    unwrap(await api.delete(`/salao/mesas/${id}`)),
+
   acknowledgeWaiterCallForMesa: async (id: string) =>
     unwrap(await api.post(`/salao/mesas/${id}/atender-garcom`)),
 
