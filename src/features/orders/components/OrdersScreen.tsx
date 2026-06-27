@@ -840,6 +840,48 @@ export function OrdersScreen() {
     }
   };
 
+  const handleRetryDelivery = async (order: any, event?: MouseEvent) => {
+    event?.stopPropagation();
+    if (!order?.id) return;
+
+    try {
+      setUpdatingStatusOrderId(order.id);
+      const response = await api.patch(
+        `/pedidos/${order.id}/tentar-entrega-novamente`,
+      );
+      const updatedOrder = response.data?.data || response.data || {};
+
+      setOrders((prev) =>
+        prev.map((item) =>
+          item.id === order.id
+            ? { ...item, ...updatedOrder, status: "saiu_para_entrega" }
+            : item,
+        ),
+      );
+      if (selected?.id === order.id) {
+        setSelected((prev: any) =>
+          prev
+            ? { ...prev, ...updatedOrder, status: "saiu_para_entrega" }
+            : prev,
+        );
+      }
+      await fetchOrders(1, true, { silent: true });
+      showSystemNotice("Pedido enviado novamente para entrega.");
+    } catch (error) {
+      console.error("Error retrying delivery", error);
+      showSystemNotice(
+        getApiErrorMessage(
+          error,
+          "Não foi possível tentar a entrega novamente.",
+        ),
+      );
+    } finally {
+      setUpdatingStatusOrderId((currentId) =>
+        currentId === order.id ? "" : currentId,
+      );
+    }
+  };
+
   const advanceStatus = async (id: string, currentStatus: string) => {
     const order =
       selected?.id === id ? selected : orders.find((item) => item.id === id);
@@ -3067,6 +3109,24 @@ export function OrdersScreen() {
                     Cliente sem telefone cadastrado.
                   </div>
                 )}
+                <button
+                  onClick={(event) => void handleRetryDelivery(selected, event)}
+                  disabled={selectedOrderUpdating}
+                  aria-busy={selectedStatusUpdating}
+                  className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:cursor-wait disabled:opacity-70 sm:w-auto"
+                >
+                  {selectedStatusUpdating ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Atualizando...
+                    </>
+                  ) : (
+                    <>
+                      <RotateCcw className="h-4 w-4" />
+                      Tentar entrega novamente
+                    </>
+                  )}
+                </button>
               </div>
             )}
 
