@@ -159,6 +159,12 @@ const getOrderTypeLabel = (order: any) => ({
   retirada: "Retirada",
   salao: "Salão",
 })[getOrderType(order)];
+const getSalaoComandaStatus = (order: any) =>
+  String(order?.salao_comanda?.status || order?.comanda?.status || "").toLowerCase();
+const canTakeSalaoOrderToTable = (order: any) =>
+  getOrderType(order) === "salao" &&
+  getBackendStatus(order?.status || "") === "pronto" &&
+  getSalaoComandaStatus(order) === "aberta";
 
 export function OrdersScreen() {
   const [searchParams] = useSearchParams();
@@ -946,6 +952,59 @@ export function OrdersScreen() {
     }
   };
 
+  const takeSalaoOrderToTable = async (order: any, event?: MouseEvent) => {
+    event?.stopPropagation();
+    if (!order?.id) return;
+
+    const currentPayments = selected?.id === order.id ? selectedPayments : [];
+
+    if (!canTakeSalaoOrderToTable(order)) {
+      showSystemNotice(
+        "Este pedido só pode ser levado para a mesa quando estiver pronto e a comanda ainda estiver aberta.",
+      );
+      return;
+    }
+
+    if (!canOrderProceedForFulfillment(order, currentPayments)) {
+      showSystemNotice(
+        "O pedido só pode ser levado para a mesa após a aprovação do pagamento.",
+      );
+      return;
+    }
+
+    try {
+      setUpdatingStatusOrderId(order.id);
+      const response = await api.patch(`/pedidos/${order.id}/status`, {
+        status: "entregue",
+      });
+      const updatedOrder = response.data?.data || response.data || {};
+
+      setOrders((prev) =>
+        prev.map((item) =>
+          item.id === order.id ? { ...item, ...updatedOrder } : item,
+        ),
+      );
+      if (selected?.id === order.id) {
+        setSelected((prev: any) =>
+          prev ? { ...prev, ...updatedOrder } : prev,
+        );
+      }
+      await fetchOrders(1, true, { silent: true });
+    } catch (error) {
+      console.error("Error taking salao order to table", error);
+      showSystemNotice(
+        getApiErrorMessage(
+          error,
+          "Não foi possível levar o pedido para a mesa.",
+        ),
+      );
+    } finally {
+      setUpdatingStatusOrderId((currentId) =>
+        currentId === order.id ? "" : currentId,
+      );
+    }
+  };
+
   const confirmCashPayment = async () => {
     if (!selected?.id || !selectedPayment?.id || !selectedIsPendingCash) return;
 
@@ -1469,6 +1528,11 @@ export function OrdersScreen() {
   const selectedCanProceed = selectedIsPaid || selectedIsPendingCash || selected?.origem_checkout === "admin_dashboard";
   const selectedPickupNeedsCashConfirmation =
     selectedIsPickup && selectedIsPendingCash && selectedStatusLabel === "Pronto";
+  const selectedCanTakeSalaoToTable =
+    Boolean(selected) &&
+    canTakeSalaoOrderToTable(selected) &&
+    selectedCanProceed &&
+    !selectedCancellationPending;
   const selectedCustomerName =
     selected?.cliente?.nome || selected?.customer || "";
   const selectedOrderNumber =
@@ -2030,6 +2094,8 @@ export function OrdersScreen() {
                     );
                     const assignedDelivery = deliveryByOrderId.get(order.id);
                     const failureReason = getDeliveryFailureReason(order);
+                    const canTakeToTable = canTakeSalaoOrderToTable(order);
+                    const takingToTable = updatingStatusOrderId === order.id;
                     const rowBgClass = isSelectedForDelivery
                       ? ""
                       : orderIndex % 2 === 0
@@ -2188,6 +2254,23 @@ export function OrdersScreen() {
                             >
                               <Eye className="w-3 h-3" /> Detalhes
                             </button>
+                            {canTakeToTable && (
+                              <button
+                                type="button"
+                                onClick={(event) =>
+                                  void takeSalaoOrderToTable(order, event)
+                                }
+                                disabled={takingToTable}
+                                className="mt-2 ml-auto inline-flex items-center justify-center gap-1 rounded-lg bg-green-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-green-700 disabled:cursor-wait disabled:opacity-70"
+                              >
+                                {takingToTable ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <CheckCircle2 className="h-3 w-3" />
+                                )}
+                                Levar pra mesa
+                              </button>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -3325,6 +3408,28 @@ export function OrdersScreen() {
                 </div>
               )}
               </>}
+              {selectedCanTakeSalaoToTable && (
+                <button
+                  onClick={(event) =>
+                    void takeSalaoOrderToTable(selected, event)
+                  }
+                  disabled={selectedOrderUpdating}
+                  aria-busy={selectedStatusUpdating}
+                  className="w-full py-2.5 rounded-lg bg-green-600 text-white text-sm font-medium transition-colors hover:bg-green-700 disabled:cursor-wait disabled:opacity-70 flex items-center justify-center gap-2"
+                >
+                  {selectedStatusUpdating ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Atualizando...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-4 h-4" />
+                      Levar pra mesa
+                    </>
+                  )}
+                </button>
+              )}
               <button
                 onClick={() => handlePrintComanda(selectedForPrint)}
                 className="w-full py-2.5 rounded-lg text-gray-700 text-sm font-medium border border-gray-200 hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
