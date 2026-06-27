@@ -209,17 +209,28 @@ export const isOrderPaid = (order: any, payments: any[] = []) =>
 export const isOrderPendingCash = (order: any, payments: any[] = []) =>
   payments.some(isPendingCashPayment) || isPendingCashPayment(order?.pagamento);
 
-export const getOrderPaymentMethod = (order: any, payment?: any) =>
-  formatPaymentMethod(
-    firstText(
-      payment?.forma_pagamento,
-      payment?.metodo,
-      payment?.method,
-      order?.pagamento?.forma_pagamento,
-      order?.pagamento?.metodo,
-      order?.payment,
-    ),
+export const getOrderPaymentMethod = (order: any, payment?: any) => {
+  const paymentOnDeliveryMethod = cleanText(
+    payment?.pagamento_entrega_tipo ||
+      payment?.paymentOnDeliveryMethod ||
+      order?.pagamento?.pagamento_entrega_tipo ||
+      order?.pagamento?.paymentOnDeliveryMethod,
+  ).toLowerCase();
+  const method = firstText(
+    payment?.forma_pagamento,
+    payment?.metodo,
+    payment?.method,
+    order?.pagamento?.forma_pagamento,
+    order?.pagamento?.metodo,
+    order?.payment,
   );
+
+  if (cleanText(method).toLowerCase() === "dinheiro" && paymentOnDeliveryMethod === "cartao") {
+    return "Cartão na entrega";
+  }
+
+  return formatPaymentMethod(method);
+};
 
 export const getOrderPaymentStatus = (order: any, payment?: any) =>
   formatPaymentStatus(

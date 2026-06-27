@@ -130,6 +130,10 @@ const formatCashChangeInfo = (payment: any) => {
     return "";
   }
 
+  if ((payment?.pagamento_entrega_tipo || payment?.paymentOnDeliveryMethod) === "cartao") {
+    return "Cobrar com cartão na entrega";
+  }
+
   if (payment?.sem_troco === true) return "Não precisa de troco";
 
   if (payment?.troco_para != null) {
@@ -1490,6 +1494,8 @@ export function OrdersScreen() {
     selectedPayment,
   );
   const selectedCashChangeInfo = formatCashChangeInfo(selectedPayment);
+  const selectedIsCardOnDelivery =
+    (selectedPayment?.pagamento_entrega_tipo || selectedPayment?.paymentOnDeliveryMethod) === "cartao";
   const selectedStatusUpdating = updatingStatusOrderId === selected?.id;
   const selectedCancelling = cancellingOrderId === selected?.id;
   const selectedArchiving = archivingOrderId === selected?.id;
@@ -3188,7 +3194,7 @@ export function OrdersScreen() {
               {selectedCashChangeInfo && (
                 <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
                   <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
-                    Troco
+                    {selectedIsCardOnDelivery ? "Cobrança" : "Troco"}
                   </div>
                   <div className="mt-0.5 text-sm font-semibold text-gray-700">
                     {selectedCashChangeInfo}
