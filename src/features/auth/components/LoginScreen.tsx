@@ -6,10 +6,11 @@ import { loginSchema } from '../schemas/loginSchema';
 import { authService } from '../services/authService';
 import { MfaLoginStep } from './MfaLoginStep';
 import type { LoginResponse } from '../types/auth';
+import logoIcon from '@/assets/brand/logo-entregai.svg';
 import logoName from '@/assets/brand/nome-entregai.svg';
 
 const PRIMARY = '#122a4c';
-const LOGO_REAL = '/icons/pwa-logo-192x192.png';
+const BRAND_BACKGROUND = '#010c25';
 const PLATFORM_BRANDING = {
   nome: 'Entregaí Admin',
   slogan: 'Gestão completa da operação da sua loja',
@@ -172,12 +173,15 @@ export function LoginScreen() {
       {/* Left panel */}
       <div
         className="hidden lg:flex flex-col justify-center w-1/2 p-12 text-white"
-        style={{ backgroundColor: primaryColor }}
+        style={{ backgroundColor: BRAND_BACKGROUND }}
       >
         <div className="max-w-lg">
           <div className="mb-10">
-            <div className="h-32 w-32 rounded-3xl bg-white flex items-center justify-center border border-white/15 p-2 shadow-sm">
-              <img src={LOGO_REAL} alt="" className="h-full w-full object-contain" />
+            <div
+              className="h-44 w-44 rounded-[2rem] flex items-center justify-center border border-white/10 p-1 shadow-sm"
+              style={{ backgroundColor: BRAND_BACKGROUND }}
+            >
+              <img src={logoIcon} alt="" className="h-full w-full object-contain" />
             </div>
           </div>
           <div className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium text-white/80 border border-white/15 bg-white/10 mb-5">
@@ -198,7 +202,7 @@ export function LoginScreen() {
         <div className="w-full max-w-md">
           {/* Mobile logo */}
           <div className="flex items-center gap-3 mb-8 lg:hidden">
-            <img src={LOGO_REAL} alt="" className="h-16 w-16 object-contain" />
+            <img src={logoIcon} alt="" className="h-16 w-16 object-contain" />
             <div className="min-w-0">
               <img src={logoName} alt="Entregaí" className="h-8 w-auto object-contain" />
               <div className="text-gray-500 text-sm line-clamp-1">{PLATFORM_BRANDING.slogan}</div>
